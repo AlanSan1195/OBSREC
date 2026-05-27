@@ -1,73 +1,78 @@
 # OBSREC
 
-OBSREC is a desktop assistant for OBS that analyzes your computer, recommends streaming and recording settings, and helps compare those recommendations against your current OBS configuration.
+OBSREC es una aplicacion de escritorio para OBS que analiza tu computadora, recomienda ajustes de streaming/grabacion y compara esas recomendaciones contra la configuracion actual de OBS.
 
-The goal is not to replace OBS. The goal is to make OBS easier to understand.
+La idea no es reemplazar OBS. La idea es hacer que OBS sea mas facil de entender.
 
-## Why This Exists
+## Enfoque
 
-OBS already includes an automatic configuration wizard. That wizard is useful, but it behaves mostly like a black box: it runs a test, chooses settings, and applies them.
+OBS ya tiene un asistente de configuracion automatica. Ese asistente es util, pero funciona casi como una caja negra: hace una prueba, decide ajustes y los aplica.
 
-OBSREC is evolving in a different direction:
+OBSREC apunta a otra cosa:
 
-- explain why a configuration makes sense
-- show what will change before applying it
-- compare current OBS settings against recommended settings
-- let the user edit recommendations manually
-- provide local fallback recommendations if AI is unavailable
-- eventually help diagnose full OBS setups, not only bitrate and FPS
+- explicar por que una configuracion tiene sentido
+- mostrar que va a cambiar antes de aplicarlo
+- comparar la configuracion actual de OBS contra la recomendada
+- permitir editar la recomendacion manualmente
+- generar una recomendacion local si la IA falla
+- evolucionar hacia diagnostico de perfiles OBS, no solo bitrate y FPS
 
-In short: OBSREC is meant to become an OBS coach and diagnostics layer, not just another auto-configurator.
+En resumen: OBSREC busca ser una capa de diagnostico y acompanamiento para OBS, no solamente otro auto-configurador.
 
-## Current Features
+## Que Hace Hoy
 
-- Electron desktop app.
-- React + Vite renderer.
-- OBS WebSocket connection with configurable host, port, and password.
-- Local system analysis using CPU, GPU, RAM, and OS information.
-- AI-powered OBS recommendation flow through Groq.
-- Local fallback recommendation when the AI service fails.
-- Editable recommendation fields:
-  - resolution
+- Aplicacion de escritorio con Electron.
+- Interfaz en React + Vite.
+- Conexion con OBS mediante WebSocket.
+- Configuracion editable de host, puerto y password de OBS WebSocket.
+- Analisis local del sistema:
+  - CPU
+  - GPU
+  - RAM
+  - sistema operativo
+- Recomendaciones de OBS usando IA via Groq.
+- Recomendacion local de respaldo si la IA falla.
+- Edicion manual antes de importar:
+  - resolucion
   - FPS
   - encoder
-  - video bitrate
-  - audio bitrate
-  - recording format
-  - recording quality
-- OBS import flow through WebSocket.
-- Current OBS vs recommended settings comparison.
-- IPC validation between renderer and Electron main process.
-- ESLint and TypeScript checks.
+  - bitrate de video
+  - bitrate de audio
+  - formato de grabacion
+  - calidad de grabacion
+- Importacion de ajustes a OBS.
+- Comparacion entre ajustes actuales de OBS y ajustes recomendados.
+- Validacion de datos entre renderer y proceso main de Electron.
+- Scripts de lint y typecheck.
 
-## How It Differs From OBS Native Auto-Configuration
+## Diferencia Frente al Asistente Nativo de OBS
 
-OBS native auto-configuration is better today at:
+El asistente nativo de OBS hoy es mejor para:
 
-- running real bandwidth tests
-- applying internal OBS settings safely
-- using OBS-native knowledge directly
-- producing a quick setup with minimal user decisions
+- hacer pruebas reales de ancho de banda
+- aplicar ajustes internos de OBS con mayor seguridad
+- conocer detalles nativos de OBS sin depender de integraciones externas
+- configurar rapidamente con poca intervencion del usuario
 
-OBSREC is focused on:
+OBSREC se enfoca en:
 
-- transparency
-- explanation
-- editing before applying
-- diagnostics
-- platform-aware recommendations
-- profile-oriented workflows
+- transparencia
+- explicacion
+- diagnostico
+- edicion antes de aplicar
+- recomendaciones por plataforma
+- flujos orientados a perfiles
 
-The long-term idea is that OBSREC should help answer questions like:
+La meta a largo plazo es que OBSREC ayude a responder preguntas como:
 
-- Why is my bitrate too high or too low?
-- Should my canvas be 4K if my output is 1080p?
-- Should I record in MKV or MP4?
-- Is my encoder choice good for my hardware?
-- What will change if I apply this preset?
-- Is my current OBS profile aligned with Twitch, YouTube, recording, or both?
+- Por que mi bitrate esta demasiado alto o bajo?
+- Conviene tener el lienzo en 4K si la salida es 1080p?
+- Me conviene grabar en MKV o MP4?
+- Mi encoder es bueno para mi hardware?
+- Que va a cambiar si aplico esta configuracion?
+- Mi perfil actual esta alineado con Twitch, YouTube, grabacion o stream + grabacion?
 
-## Tech Stack
+## Stack Tecnico
 
 - Electron
 - React
@@ -79,27 +84,27 @@ The long-term idea is that OBSREC should help answer questions like:
 - Groq SDK
 - systeminformation
 
-## Requirements
+## Requisitos
 
 - Node.js
 - pnpm
 - OBS Studio
-- OBS WebSocket enabled
-- Groq API key for AI recommendations
+- OBS WebSocket habilitado
+- API key de Groq para recomendaciones con IA
 
-OBS WebSocket is built into modern OBS versions. In OBS, open:
+OBS WebSocket viene integrado en versiones modernas de OBS. En OBS puedes abrir:
 
-`Tools > WebSocket Server Settings`
+`Herramientas > Ajustes del servidor WebSocket`
 
-Recommended local defaults:
+Valores locales recomendados:
 
 - Host: `localhost`
-- Port: `4455`
-- Password: the password shown in OBS WebSocket settings
+- Puerto: `4455`
+- Password: el password mostrado por OBS WebSocket
 
-## Environment Variables
+## Variables de Entorno
 
-Copy `.env.example` to `.env` and fill in your values.
+Copia `.env.example` a `.env` y completa tus valores.
 
 ```bash
 GROQ_API_KEY=
@@ -108,86 +113,86 @@ OBS_WEBSOCKET_PORT=4455
 OBS_WEBSOCKET_PASSWORD=
 ```
 
-OBS connection values can also be entered directly in the app.
+Los valores de conexion de OBS tambien pueden capturarse directamente desde la app.
 
-## Development
+## Desarrollo
 
-Install dependencies:
+Instalar dependencias:
 
 ```bash
 pnpm install
 ```
 
-Run the app:
+Ejecutar la app:
 
 ```bash
 pnpm run dev
 ```
 
-Build main process:
+Compilar el proceso main:
 
 ```bash
 pnpm run build:main
 ```
 
-Build renderer:
+Compilar el renderer:
 
 ```bash
 pnpm run build:renderer
 ```
 
-Run checks:
+Ejecutar verificaciones:
 
 ```bash
 pnpm run lint
 pnpm run typecheck
 ```
 
-Create production build:
+Crear build de produccion:
 
 ```bash
 pnpm run build
 ```
 
-## Project Structure
+## Estructura del Proyecto
 
 ```text
 src/
-  main/        Electron main process, IPC handlers, OBS integration
-  renderer/    React UI
-  shared/      Shared types, validators, and recommendation logic
+  main/        Proceso main de Electron, IPC e integracion con OBS
+  renderer/    Interfaz React
+  shared/      Tipos compartidos, validadores y logica de recomendacion
 ```
 
-## Current Status
+## Estado Actual
 
-OBSREC is still early. The core direction is in place, but the app should be treated as an experimental assistant while OBS integration is expanded and tested across more OBS versions and profiles.
+OBSREC todavia esta en una etapa temprana. La direccion principal ya esta definida, pero debe tratarse como un asistente experimental mientras se prueba con mas versiones de OBS, perfiles y hardware.
 
-Completed foundations:
+Bases completadas:
 
-- app shell
-- OBS connection
-- AI recommendation flow
-- local fallback recommendation
-- editable recommendation UI
-- OBS settings comparison
-- validation and basic tooling
+- shell de aplicacion
+- conexion con OBS
+- flujo de recomendacion con IA
+- fallback local
+- UI editable de recomendacion
+- comparacion de ajustes actuales contra recomendados
+- validacion y tooling basico
 
-Important next steps:
+Siguientes pasos importantes:
 
-- improve mapping of OBS profile parameters
-- add safer preset backup/restore
-- show richer diagnostic explanations
-- save connection preferences locally
-- support multiple OBS profiles/presets
-- test against more hardware and OBS configurations
+- mejorar el mapeo de parametros internos de OBS
+- agregar respaldo/restauracion de perfiles
+- mostrar explicaciones de diagnostico mas ricas
+- guardar preferencias de conexion localmente
+- soportar multiples perfiles o presets
+- probar con mas configuraciones de OBS y hardware
 
-## Safety Notes
+## Notas de Seguridad
 
-OBSREC changes OBS settings through WebSocket. Before relying on it for production streaming or recording, verify the generated settings in OBS.
+OBSREC modifica ajustes de OBS mediante WebSocket. Antes de usarlo para una transmision o grabacion importante, revisa los ajustes aplicados dentro de OBS.
 
-Prefer recording in MKV when possible to reduce the risk of losing a recording if OBS or the system crashes.
+Cuando sea posible, es recomendable grabar en MKV para reducir el riesgo de perder una grabacion si OBS o el sistema fallan.
 
-## Repository
+## Repositorio
 
 GitHub:
 
