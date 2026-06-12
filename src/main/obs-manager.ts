@@ -6,10 +6,30 @@ import type {
   OBSAudioSettingsSnapshot,
   OBSConfig,
   OBSConnectionSettings,
-  OBSPlatform,
   OBSSettingsSnapshot,
 } from '../shared/types';
 import { parseResolution } from '../shared/validation';
+import {
+  areObsrecFiltersConfigured,
+  collectDuckingInputCandidates,
+  getBooleanValue,
+  getDuckingFilter,
+  getFilterSettings,
+  getNumberSetting,
+  getOptionalString,
+  getSimpleEncoderId,
+  getSimpleRecordingQuality,
+  getStreamServer,
+  getStringSetting,
+  getStringValue,
+  isAudioInputKind,
+  isRecord,
+  obsrecFilterNames,
+  scoreAudioDevice,
+  scoreAudioInput,
+  type OBSJsonSettings,
+} from './obs-helpers';
+import { saveBackup } from './backup-store';
 
 const defaultConnectionSettings: OBSConnectionSettings = {
   host: 'localhost',
@@ -17,24 +37,6 @@ const defaultConnectionSettings: OBSConnectionSettings = {
   password: '',
 };
 
-const defaultAudioConfig = {
-  gainDb: 10,
-  compressorRatio: 4,
-  compressorThresholdDb: -10,
-  limiterThresholdDb: -1,
-};
-
-const obsrecFilterNames = {
-  gain: 'OBSREC - Gain',
-  compressor: 'OBSREC - Compressor',
-  limiter: 'OBSREC - Limiter',
-};
-
-type OBSJsonSettings = Record<string, string | number | boolean>;
-type OBSAudioFilterDefinition = {
-  kind: string;
-  settings: OBSJsonSettings;
-};
 type AudioInputCandidate = {
   name: string;
   kind: string;
@@ -42,209 +44,39 @@ type AudioInputCandidate = {
   score: number;
 };
 
-function getStreamServer(platform: OBSPlatform): string {
-  return platform === 'twitch'
-    ? 'rtmp://live.twitch.tv/app'
-    : 'rtmps://live-upload.youtube.com/live2';
-}
-
-function getSimpleEncoderId(encoder: string): string | null {
-  const normalized = encoder.toLowerCase();
-
-  if (normalized.includes('nvenc')) return 'nvenc';
-  if (normalized.includes('x264')) return 'x264';
-  if (normalized.includes('qsv')) return 'qsv';
-  if (normalized.includes('amf') || normalized.includes('amd')) return 'amd';
-  if (normalized.includes('apple') || normalized.includes('videotoolbox')) return 'apple_h264';
-
-  return null;
-}
-
-function getSimpleRecordingQuality(quality?: string): string {
-  switch (quality?.toLowerCase()) {
-    case 'lossless':
-      return 'Lossless';
-    case 'low':
-    case 'same_as_stream':
-    case 'stream':
-      return 'Stream';
-    case 'medium':
-      return 'Small';
-    case 'high':
-    default:
-      return 'HQ';
-  }
-}
-
-function getStringSetting(settings: Record<string, unknown>, key: string): string {
-  const value = settings[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value : 'Unknown';
-}
-
-function getNumberSetting(settings: Record<string, unknown>, key: string): number {
-  const value = settings[key];
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim().length > 0) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function getOptionalString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function getStringValue(record: Record<string, unknown>, keys: string[]): string {
-  for (const key of keys) {
-    const value = getOptionalString(record[key]);
-    if (value) return value;
-  }
-  return '';
-}
-
-function getBooleanValue(value: unknown): boolean {
-  return typeof value === 'boolean' ? value : false;
-}
-
-function scoreAudioDevice(name: string, id: string, isCurrent: boolean): { score: number; reason: string } {
-  const normalized = `${name} ${id}`.toLowerCase();
-  let score = isCurrent ? 20 : 0;
-  const reasons: string[] = [];
-
-  if (normalized.includes('usb')) {
-    score += 35;
-    reasons.push('microfono/interfaz USB');
-  }
-  if (normalized.includes('xlr') || normalized.includes('focusrite') || normalized.includes('scarlett') || normalized.includes('rode') || normalized.includes('shure') || normalized.includes('elgato') || normalized.includes('blue')) {
-    score += 30;
-    reasons.push('hardware de audio dedicado');
-  }
-  if (normalized.includes('microphone') || normalized.includes('mic')) {
-    score += 15;
-    reasons.push('microfono explicito');
-  }
-  if (normalized.includes('default') || normalized.includes('system')) {
-    score -= 25;
-    reasons.push('el dispositivo predeterminado del sistema puede cambiar sin aviso');
-  }
-  if (normalized.includes('webcam') || normalized.includes('camera') || normalized.includes('facetime')) {
-    score -= 20;
-    reasons.push('el microfono de camara suele tener menor calidad');
-  }
-  if (normalized.includes('virtual') || normalized.includes('blackhole') || normalized.includes('loopback') || normalized.includes('vb-audio')) {
-    score -= 15;
-    reasons.push('dispositivo virtual');
-  }
-
-  return {
-    score,
-    reason: reasons.length > 0 ? reasons.join(', ') : 'dispositivo de audio disponible en OBS',
-  };
-}
-
-function isAudioInputKind(kind: string): boolean {
-  const normalized = kind.toLowerCase();
-  return normalized.includes('audio') && (
-    normalized.includes('input')
-    || normalized.includes('capture')
-    || normalized.includes('wasapi')
-    || normalized.includes('coreaudio')
-    || normalized.includes('pulse')
-    || normalized.includes('alsa')
-  );
-}
-
-function scoreAudioInput(name: string, kind: string, isSpecialInput: boolean): number {
-  const normalized = `${name} ${kind}`.toLowerCase();
-  let score = isSpecialInput ? 40 : 0;
-
-  if (isAudioInputKind(kind)) score += 35;
-  if (normalized.includes('mic') || normalized.includes('microphone')) score += 25;
-  if (normalized.includes('aux')) score += 10;
-  if (normalized.includes('desktop') || normalized.includes('output')) score -= 40;
-  if (normalized.includes('monitor')) score -= 20;
-
-  return score;
-}
-
-function isSameFilterValue(current: unknown, expected: number | string | boolean): boolean {
-  if (typeof expected === 'number') {
-    const value = typeof current === 'number' ? current : Number(current);
-    return Number.isFinite(value) && Math.abs(value - expected) < 0.05;
-  }
-
-  if (typeof expected === 'boolean') {
-    return current === expected;
-  }
-
-  return current === expected;
-}
-
-function getFilterSettings(config: OBSAudioConfig): Record<string, OBSAudioFilterDefinition> {
-  return {
-    [obsrecFilterNames.gain]: {
-      kind: 'gain_filter',
-      settings: { db: config.filters.gainDb },
-    },
-    [obsrecFilterNames.compressor]: {
-      kind: 'compressor_filter',
-      settings: {
-        ratio: config.filters.compressorRatio,
-        threshold: config.filters.compressorThresholdDb,
-        attack_time: 6,
-        release_time: 60,
-        output_gain: 0,
-        sidechain_source: 'none',
-      },
-    },
-    [obsrecFilterNames.limiter]: {
-      kind: 'limiter_filter',
-      settings: {
-        threshold: config.filters.limiterThresholdDb,
-        release_time: 60,
-      },
-    },
-  };
-}
-
-function areObsrecFiltersConfigured(filters: OBSAudioFilterSnapshot[]): boolean {
-  const expectedConfig: OBSAudioConfig = {
-    inputName: 'snapshot',
-    mono: true,
-    filters: defaultAudioConfig,
-  };
-  const expectedFilters = getFilterSettings(expectedConfig);
-
-  return Object.entries(expectedFilters).every(([name, expected]) => {
-    const filter = filters.find((item) => item.name === name && item.kind === expected.kind && item.enabled);
-    if (!filter) return false;
-
-    return Object.entries(expected.settings).every(([key, value]) => isSameFilterValue(filter.settings[key], value));
-  });
-}
+type OBSConnectionStatus = {
+  connected: boolean;
+  message: string;
+};
 
 export class OBSManager {
   private obs: OBSWebSocket;
   private connected: boolean = false;
+  private statusListener: ((status: OBSConnectionStatus) => void) | null = null;
 
   constructor() {
     this.obs = new OBSWebSocket();
+  }
+
+  onStatusChange(listener: (status: OBSConnectionStatus) => void) {
+    this.statusListener = listener;
+  }
+
+  private emitStatus(message: string) {
+    this.statusListener?.({ connected: this.connected, message });
   }
 
   async initialize() {
     this.obs.on('ConnectionError', (err: Error) => {
       console.error('OBS WebSocket error:', err);
       this.connected = false;
+      this.emitStatus('Se perdió la conexión con OBS');
     });
 
     this.obs.on('ConnectionClosed', () => {
       console.log('OBS connection closed');
       this.connected = false;
+      this.emitStatus('OBS cerró la conexión');
     });
   }
 
@@ -259,6 +91,7 @@ export class OBSManager {
     try {
       await this.obs.connect(address, connectionSettings.password);
       this.connected = true;
+      this.emitStatus('Conectado a OBS');
       return { success: true, message: 'Conectado a OBS' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -281,6 +114,7 @@ export class OBSManager {
     try {
       await this.obs.disconnect();
       this.connected = false;
+      this.emitStatus('Desconectado de OBS');
       return { success: true, message: 'Desconectado de OBS' };
     } catch {
       return { success: false, message: 'Error al desconectar' };
@@ -405,6 +239,8 @@ export class OBSManager {
       const selectedDevice = devices.find((device) => device.id === selectedDeviceId);
       const monoSupported = 'mono' in settings || 'force_mono' in settings;
       const monoConfigured = getBooleanValue(settings.mono) || getBooleanValue(settings.force_mono);
+      const duckingTargets = await this.getDuckingTargets();
+      const primaryDuckingTarget = duckingTargets[0];
 
       if (!monoSupported) {
         warnings.push('OBS WebSocket no expone la casilla Mono de Propiedades avanzadas de audio para esta entrada. OBSREC puede aplicar filtros automaticamente, pero Mono debe activarse manualmente en OBS.');
@@ -425,6 +261,13 @@ export class OBSManager {
           volumeDb: typeof volume?.inputVolumeDb === 'number' ? volume.inputVolumeDb : 0,
           monitorType: monitorType?.monitorType ?? 'OBS_MONITORING_TYPE_NONE',
           syncOffsetMs: typeof syncOffset?.inputAudioSyncOffset === 'number' ? syncOffset.inputAudioSyncOffset : 0,
+          desktopAudio: primaryDuckingTarget
+            ? {
+              inputName: primaryDuckingTarget.inputName,
+              duckingConfigured: primaryDuckingTarget.duckingConfigured,
+            }
+            : undefined,
+          duckingTargets,
           filters,
           obsrecFiltersConfigured: areObsrecFiltersConfigured(filters),
           monoConfigured,
@@ -438,9 +281,9 @@ export class OBSManager {
     }
   }
 
-  async configureAudio(config: OBSAudioConfig): Promise<{ success: boolean; message: string; snapshot?: OBSAudioSettingsSnapshot }> {
+  async configureAudio(config: OBSAudioConfig): Promise<{ success: boolean; message: string; snapshot?: OBSAudioSettingsSnapshot; warnings: string[] }> {
     if (!this.connected) {
-      return { success: false, message: 'Not connected to OBS. Please connect first.' };
+      return { success: false, message: 'Not connected to OBS. Please connect first.', warnings: [] };
     }
 
     const warnings: string[] = [];
@@ -476,7 +319,32 @@ export class OBSManager {
         warnings.push('OBS WebSocket no expuso Mono de Propiedades avanzadas de audio para esta entrada de microfono.');
       }
 
-      await this.ensureAudioFilters(config, warnings);
+      if (config.monitorType) {
+        try {
+          await this.obs.call('SetInputAudioMonitorType', {
+            inputName: config.inputName,
+            monitorType: config.monitorType,
+          });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          warnings.push(`Monitoreo de audio: ${errorMessage}`);
+        }
+      }
+
+      if (typeof config.syncOffsetMs === 'number') {
+        try {
+          await this.obs.call('SetInputAudioSyncOffset', {
+            inputName: config.inputName,
+            inputAudioSyncOffset: config.syncOffsetMs,
+          });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          warnings.push(`Sincronizacion de audio: ${errorMessage}`);
+        }
+      }
+
+      await this.ensureAudioFilters(config.inputName, getFilterSettings(config), warnings);
+      await this.configureDucking(config, warnings);
       const snapshot = await this.getAudioSnapshot();
       const message = warnings.length > 0
         ? `Configuracion de audio aplicada con advertencias: ${warnings.join('; ')}`
@@ -486,10 +354,11 @@ export class OBSManager {
         success: true,
         message,
         snapshot: snapshot.snapshot,
+        warnings,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, message: `Audio configuration failed: ${errorMessage}` };
+      return { success: false, message: `Audio configuration failed: ${errorMessage}`, warnings };
     }
   }
 
@@ -500,6 +369,16 @@ export class OBSManager {
 
     try {
       const warnings: string[] = [];
+      const backupSnapshot = await this.getSettingsSnapshot();
+      if (backupSnapshot.success && backupSnapshot.snapshot) {
+        try {
+          await saveBackup(backupSnapshot.snapshot);
+        } catch {
+          warnings.push('No se pudo guardar el respaldo previo; los cambios se aplicaran sin respaldo.');
+        }
+      } else {
+        warnings.push('No se pudo leer la configuracion actual para respaldo; los cambios se aplicaran sin respaldo.');
+      }
 
       if (config.mode === 'stream_only' || config.mode === 'stream_record') {
         const currentStreamSettings = await this.obs.call('GetStreamServiceSettings');
@@ -563,22 +442,101 @@ export class OBSManager {
         const audioResult = await this.configureAudio(config.audio);
         if (!audioResult.success) {
           warnings.push(audioResult.message);
-        } else if (audioResult.message.includes('warnings')) {
-          warnings.push(audioResult.message);
+        } else if (audioResult.warnings.length > 0) {
+          warnings.push(...audioResult.warnings);
         }
       }
 
       if (warnings.length > 0) {
         return {
           success: true,
-          message: `Configuration applied to OBS with warnings: ${warnings.join('; ')}`,
+          message: `Configuracion aplicada en OBS con advertencias: ${warnings.join('; ')}`,
         };
       }
 
-      return { success: true, message: 'Configuration applied to OBS' };
+      return { success: true, message: 'Configuracion aplicada en OBS' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, message: `Configuration failed: ${errorMessage}` };
+      return { success: false, message: `No se pudo aplicar la configuracion: ${errorMessage}` };
+    }
+  }
+
+  async restoreSnapshot(snapshot: OBSSettingsSnapshot): Promise<{ success: boolean; message: string; warnings: string[] }> {
+    if (!this.connected) {
+      return { success: false, message: 'Not connected to OBS. Please connect first.', warnings: [] };
+    }
+
+    const warnings: string[] = [];
+
+    try {
+      const baseResolution = parseResolution(snapshot.baseResolution);
+      if (!baseResolution.success) {
+        return { success: false, message: baseResolution.message, warnings };
+      }
+
+      const outputResolution = parseResolution(snapshot.outputResolution);
+      if (!outputResolution.success) {
+        return { success: false, message: outputResolution.message, warnings };
+      }
+
+      await this.obs.call('SetVideoSettings', {
+        baseWidth: baseResolution.value.width,
+        baseHeight: baseResolution.value.height,
+        outputWidth: outputResolution.value.width,
+        outputHeight: outputResolution.value.height,
+        fpsNumerator: snapshot.fps,
+        fpsDenominator: 1,
+      });
+
+      if (snapshot.streamServer !== 'Unknown') {
+        try {
+          const currentStreamSettings = await this.obs.call('GetStreamServiceSettings');
+          const currentSettings = currentStreamSettings.streamServiceSettings as Record<string, unknown>;
+          await this.obs.call('SetStreamServiceSettings', {
+            streamServiceType: 'rtmp_custom',
+            streamServiceSettings: {
+              ...currentSettings,
+              server: snapshot.streamServer,
+            },
+          });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          warnings.push(`Servidor de stream: ${errorMessage}`);
+        }
+      }
+
+      const profileUpdates = [
+        { category: 'Output', name: 'Mode', value: 'Simple' },
+        { category: 'SimpleOutput', name: 'VBitrate', value: snapshot.bitrate > 0 ? String(snapshot.bitrate) : '' },
+        { category: 'SimpleOutput', name: 'ABitrate', value: snapshot.audioBitrate > 0 ? String(snapshot.audioBitrate) : '' },
+        { category: 'SimpleOutput', name: 'RecFormat', value: snapshot.recordingFormat },
+        { category: 'SimpleOutput', name: 'RecQuality', value: snapshot.recordingQuality },
+        { category: 'SimpleOutput', name: 'StreamEncoder', value: snapshot.encoder },
+      ].filter((update) => update.value && update.value !== 'Unknown');
+
+      for (const update of profileUpdates) {
+        try {
+          await this.obs.call('SetProfileParameter', {
+            parameterCategory: update.category,
+            parameterName: update.name,
+            parameterValue: update.value,
+          });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          warnings.push(`${update.category}.${update.name}: ${errorMessage}`);
+        }
+      }
+
+      return {
+        success: true,
+        message: warnings.length > 0
+          ? `Configuracion anterior restaurada con advertencias: ${warnings.join('; ')}`
+          : 'Configuracion anterior restaurada',
+        warnings,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, message: `No se pudo restaurar la configuracion: ${errorMessage}`, warnings };
     }
   }
 
@@ -648,6 +606,25 @@ export class OBSManager {
     return candidates.sort((a, b) => b.score - a.score)[0] ?? null;
   }
 
+  private async getDuckingTargets(): Promise<NonNullable<OBSAudioSettingsSnapshot['duckingTargets']>> {
+    const [specialInputs, inputList] = await Promise.all([
+      this.obs.call('GetSpecialInputs').catch(() => undefined),
+      this.obs.call('GetInputList').catch(() => undefined),
+    ]);
+    const candidates = collectDuckingInputCandidates(
+      isRecord(specialInputs) ? specialInputs : undefined,
+      inputList?.inputs ?? [],
+    );
+
+    return Promise.all(candidates.map(async (candidate) => {
+      const filters = await this.getAudioFilters(candidate.inputName);
+      return {
+        ...candidate,
+        duckingConfigured: filters.some((filter) => filter.name === obsrecFilterNames.ducking && filter.enabled),
+      };
+    }));
+  }
+
   private async getAudioDevices(inputName: string, selectedDeviceId?: string): Promise<OBSAudioDevice[]> {
     const propertyNames = ['device_id', 'device'];
 
@@ -686,9 +663,44 @@ export class OBSManager {
     return [];
   }
 
-  private async ensureAudioFilters(config: OBSAudioConfig, warnings: string[]): Promise<void> {
-    const existingFilters = await this.getAudioFilters(config.inputName);
-    const expectedFilters = getFilterSettings(config);
+  private async configureDucking(config: OBSAudioConfig, warnings: string[]): Promise<void> {
+    const desktopInputName = config.ducking?.desktopInputName;
+    if (!desktopInputName) {
+      if (config.ducking?.enabled) {
+        warnings.push('No se encontro una fuente de musica o audio de escritorio para el ducking.');
+      }
+      return;
+    }
+
+    if (config.ducking?.enabled) {
+      await this.ensureAudioFilters(desktopInputName, getDuckingFilter(config.inputName), warnings);
+      return;
+    }
+
+    if (config.ducking?.enabled === false) {
+      const existingFilters = await this.getAudioFilters(desktopInputName);
+      const existingFilter = existingFilters.find((filter) => filter.name === obsrecFilterNames.ducking);
+      if (!existingFilter) return;
+
+      try {
+        await this.obs.call('SetSourceFilterEnabled', {
+          sourceName: desktopInputName,
+          filterName: obsrecFilterNames.ducking,
+          filterEnabled: false,
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        warnings.push(`${obsrecFilterNames.ducking}: ${errorMessage}`);
+      }
+    }
+  }
+
+  private async ensureAudioFilters(
+    sourceName: string,
+    expectedFilters: Record<string, { kind: string; settings: OBSJsonSettings }>,
+    warnings: string[],
+  ): Promise<void> {
+    const existingFilters = await this.getAudioFilters(sourceName);
 
     for (const [filterName, filterConfig] of Object.entries(expectedFilters)) {
       const existingFilter = existingFilters.find((filter) => filter.name === filterName);
@@ -696,20 +708,20 @@ export class OBSManager {
       try {
         if (!existingFilter) {
           await this.obs.call('CreateSourceFilter', {
-            sourceName: config.inputName,
+            sourceName,
             filterName,
             filterKind: filterConfig.kind,
             filterSettings: filterConfig.settings,
           });
         } else {
           await this.obs.call('SetSourceFilterSettings', {
-            sourceName: config.inputName,
+            sourceName,
             filterName,
             filterSettings: filterConfig.settings,
             overlay: true,
           });
           await this.obs.call('SetSourceFilterEnabled', {
-            sourceName: config.inputName,
+            sourceName,
             filterName,
             filterEnabled: true,
           });

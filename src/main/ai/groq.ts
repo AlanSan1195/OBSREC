@@ -1,5 +1,5 @@
 import Groq from 'groq-sdk';
-import type { AIService, AIServiceMessage } from './types';
+import type { AIService, AIServiceMessage } from '../../shared/types';
 
 let groqInstance: Groq | null = null;
 

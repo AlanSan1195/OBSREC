@@ -3,9 +3,10 @@ import path from 'path';
 import { obsManager } from './obs-manager';
 import { chatWithAI } from './ai/serviceManager';
 import dotenv from 'dotenv';
-import type { AIRecommendationRequest } from '../shared/types';
-import { getLocalRecommendation } from '../shared/localRecommendation';
-import { validateAIRecommendation, validateAIRecommendationRequest, validateOBSAudioConfig, validateOBSConfig, validateOBSConnectionSettings } from '../shared/validation';
+import type { AIRecommendationExplanationRequest, AIRecommendationRequest } from '../shared/types';
+import { getLocalRecommendation, getLocalRecommendationExplanation } from '../shared/localRecommendation';
+import { validateAIRecommendation, validateAIRecommendationExplanation, validateAIRecommendationExplanationRequest, validateAIRecommendationRequest, validateOBSAudioConfig, validateOBSConfig, validateOBSConnectionSettings } from '../shared/validation';
+import { loadBackup } from './backup-store';
 
 dotenv.config();
 
@@ -40,6 +41,9 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   obsManager.initialize();
+  obsManager.onStatusChange((status) => {
+    mainWindow?.webContents.send('obs:connection-changed', status);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -95,6 +99,21 @@ ipcMain.handle('obs:configure-audio', async (_, config: unknown) => {
   }
 
   return obsManager.configureAudio(validation.value);
+});
+
+ipcMain.handle('obs:get-last-backup', async () => {
+  const backup = await loadBackup();
+  return backup
+    ? { success: true, message: 'Respaldo disponible', backup }
+    : { success: false, message: 'No hay respaldo guardado' };
+});
+
+ipcMain.handle('obs:restore-last-backup', async () => {
+  const backup = await loadBackup();
+  if (!backup) {
+    return { success: false, message: 'No hay respaldo guardado', warnings: [] };
+  }
+  return obsManager.restoreSnapshot(backup.snapshot);
 });
 
 ipcMain.handle('system:get-info', async () => {
@@ -181,11 +200,77 @@ Responde en JSON con este formato exacto, sin texto adicional:
       if (!recommendation.success) {
         throw new Error(recommendation.message);
       }
-      return recommendation.value;
+      return { ...recommendation.value, source: 'ai' as const };
     }
     throw new Error('Respuesta de IA no contenía JSON válido');
   } catch (error) {
     console.error('Error getting AI recommendation:', error);
     return getLocalRecommendation(request);
+  }
+});
+
+ipcMain.handle('ai:explain-recommendation', async (_, rawRequest: unknown) => {
+  const validation = validateAIRecommendationExplanationRequest(rawRequest);
+  if (!validation.success) {
+    throw new Error(validation.message);
+  }
+
+  const request: AIRecommendationExplanationRequest = validation.value;
+  const { systemInfo, mode, platform, originalRecommendations, currentRecommendations, changedFields } = request;
+  const prompt = `Eres un experto en configuracion de OBS para streaming y grabacion.
+El usuario cambio manualmente una configuracion recomendada. Explica el probable resultado de estos cambios con lenguaje claro y util.
+
+Contexto:
+- Modo: ${mode}
+- Plataforma: ${platform}
+- CPU: ${systemInfo.cpu.model} (${systemInfo.cpu.cores} cores)
+- GPU: ${systemInfo.gpu.model} ${systemInfo.gpu.vram}MB VRAM (Vendor: ${systemInfo.gpu.vendor})
+- RAM: ${systemInfo.ram.total}GB
+- Hardware NVENC disponible: ${systemInfo.gpu.hasNvenc ? 'Si' : 'No'}
+
+Configuracion original:
+- Resolucion: ${originalRecommendations.resolution}
+- FPS: ${originalRecommendations.fps}
+- Encoder: ${originalRecommendations.encoder}
+- Bitrate de video: ${originalRecommendations.bitrate} kbps
+- Bitrate de audio: ${originalRecommendations.audio_bitrate} kbps
+- Formato de grabacion: ${originalRecommendations.recording_format}
+- Calidad de grabacion: ${originalRecommendations.recording_quality}
+
+Configuracion actual modificada:
+- Resolucion: ${currentRecommendations.resolution}
+- FPS: ${currentRecommendations.fps}
+- Encoder: ${currentRecommendations.encoder}
+- Bitrate de video: ${currentRecommendations.bitrate} kbps
+- Bitrate de audio: ${currentRecommendations.audio_bitrate} kbps
+- Formato de grabacion: ${currentRecommendations.recording_format}
+- Calidad de grabacion: ${currentRecommendations.recording_quality}
+
+Campos modificados: ${changedFields.join(', ')}
+
+Responde en JSON con este formato exacto, sin texto adicional:
+{
+  "reasoning": "Explicacion breve en espanol: menciona calidad esperada, estabilidad probable, carga de CPU/GPU/red y cualquier riesgo concreto del cambio."
+}`;
+
+  try {
+    const response = await chatWithAI([
+      { role: 'system', content: 'Eres un experto en configuracion de OBS. Responde solo en JSON valido.' },
+      { role: 'user', content: prompt },
+    ]);
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const explanation = validateAIRecommendationExplanation({ ...parsed, source: 'ai' });
+      if (!explanation.success) {
+        throw new Error(explanation.message);
+      }
+      return explanation.value;
+    }
+    throw new Error('Respuesta de IA no contenia JSON valido');
+  } catch (error) {
+    console.error('Error explaining AI recommendation:', error);
+    return getLocalRecommendationExplanation(request);
   }
 });

@@ -45,7 +45,7 @@ export const useAppStore = create<AppState>((set) => ({
   obsSettingsSnapshot: null,
   obsAudioSnapshot: null,
   obsConnected: false,
-  obsMessage: 'Disconnected from OBS',
+  obsMessage: 'Desconectado de OBS',
   error: null,
 
   setMode: (mode) => set({ mode }),

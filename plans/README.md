@@ -12,14 +12,14 @@ Comandos de verificación del repo: `pnpm run typecheck`, `pnpm run lint`
 
 | Plan | Título | Prioridad | Esfuerzo | Depende de | Estado |
 |------|--------|-----------|----------|------------|--------|
-| 001  | Hacer que `pnpm run dev` cargue el servidor de Vite | P1 | S | — | TODO |
-| 002  | Eliminar código muerto duplicado y endurecer el empaquetado | P1 | S | — | TODO |
-| 003  | Establecer la base de tests con Vitest | P1 | M | 002 (recomendado) | TODO |
-| 004  | Actualizar Electron y electron-builder (CVEs) | P2 | M | 003 (recomendado) | TODO |
-| 005  | Notificar al renderer cuando OBS se desconecta | P2 | M | — | TODO |
-| 006  | Unificar idioma, accesibilidad y fallback de IA visible | P2 | M | 005 (recomendado) | TODO |
-| 007  | Respaldo automático antes de aplicar y restauración | P2 | M/L | 003, 006 | TODO |
-| 008  | Audio etapa 2: ruido, monitoreo, lip sync y ducking | P3 | L | 003, 006; mejor tras 007 | TODO |
+| 001  | Hacer que `pnpm run dev` cargue el servidor de Vite | P1 | S | — | DONE |
+| 002  | Eliminar código muerto duplicado y endurecer el empaquetado | P1 | S | — | DONE |
+| 003  | Establecer la base de tests con Vitest | P1 | M | 002 (recomendado) | DONE |
+| 004  | Actualizar Electron y electron-builder (CVEs) | P2 | M | 003 (recomendado) | DONE |
+| 005  | Notificar al renderer cuando OBS se desconecta | P2 | M | — | DONE |
+| 006  | Unificar idioma, accesibilidad y fallback de IA visible | P2 | M | 005 (recomendado) | DONE |
+| 007  | Respaldo automático antes de aplicar y restauración | P2 | M/L | 003, 006 | DONE |
+| 008  | Audio etapa 2: ruido, monitoreo, lip sync y ducking | P3 | L | 003, 006; mejor tras 007 | DONE |
 
 Valores de estado: TODO | IN PROGRESS | DONE | BLOCKED (con motivo de una línea) | REJECTED (con justificación de una línea)
 

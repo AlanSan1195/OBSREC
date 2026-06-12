@@ -216,3 +216,74 @@ Siguientes pasos recomendados:
 
 El objetivo final es que OBSREC no solo aplique ajustes, sino que ayude al
 usuario a entender por que esos ajustes existen.
+
+## Etapa 2
+
+La segunda etapa agrega controles que suelen aparecer cuando el usuario ya
+tiene una base de voz funcionando y quiere pulir el audio para directo.
+
+### Supresion de ruido
+
+OBSREC puede agregar `OBSREC - Noise Suppression`, un filtro
+`noise_suppress_filter` con metodo `rnnoise`.
+
+RNNoise ayuda a limpiar estatica, ventiladores, zumbidos suaves y ruido de
+fondo constante antes de que la ganancia y el compresor levanten la senal. Por
+eso se crea antes que la ganancia, el compresor y el limitador.
+
+El default esta activado porque es una mejora segura para muchos usuarios, pero
+puede apagarse si el microfono ya esta limpio o si la voz empieza a sonar
+demasiado procesada.
+
+### Monitoreo
+
+OBSREC ahora puede escribir el tipo de monitoreo de la entrada de microfono:
+
+- sin monitoreo
+- solo monitoreo
+- monitorizar y emitir
+
+Esto sirve para escuchar en audifonos exactamente lo que OBS esta procesando.
+Es importante usar audifonos conectados a la salida de monitoreo de OBS para
+evitar eco o realimentacion.
+
+### Sincronizacion labial
+
+El offset de audio se puede ajustar en milisegundos dentro del rango que acepta
+OBS. La UI incluye una ayuda simple:
+
+`cuadros de desfase x (1000 / FPS) = ms`
+
+Por ejemplo, si la voz llega 3 cuadros tarde a 60 fps, el ajuste aproximado es
+`3 x (1000 / 60) = 50 ms`.
+
+OBSREC no mide automaticamente el desfase; el usuario introduce el valor tras
+hacer una prueba visual o una grabacion corta.
+
+### Ducking
+
+OBSREC puede agregar `OBSREC - Ducking` al audio de escritorio. Es un compresor
+con sidechain que usa el microfono como fuente de control: cuando el usuario
+habla, el audio de escritorio baja y luego vuelve de forma suave.
+
+Los valores iniciales son ratio `4:1`, threshold `-30 dB`, attack `6 ms` y
+release `300 ms`. El release mas largo evita que la musica suba y baje de forma
+nerviosa entre palabras.
+
+OBS identifica el sidechain por nombre de fuente. Si el usuario renombra el
+microfono en OBS, conviene volver a aplicar la configuracion para que el ducking
+apunte al nombre actual.
+
+### Captura de audio por aplicacion
+
+La etapa 2 no crea fuentes nuevas de captura por aplicacion porque depende de
+la plataforma:
+
+- Windows: OBS estable incluye una fuente `Application Audio Capture` para
+  capturar una app especifica.
+- macOS: normalmente se necesita un driver virtual como BlackHole o Loopback y
+  enrutar la app hacia ese dispositivo.
+
+Cuando esa fuente ya existe en OBS, OBSREC puede trabajar sobre el audio que OBS
+expone, pero no intenta crear ni enrutar capturas por aplicacion de forma
+automatica.

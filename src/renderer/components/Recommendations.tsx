@@ -1,9 +1,20 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store';
-import type { AIRecommendation } from '../../shared/types';
+import { getLocalRecommendationExplanation } from '../../shared/localRecommendation';
+import type { AIRecommendation, AIRecommendationField, AIRecommendationSettings } from '../../shared/types';
+import { IconAlert, IconSliders, Section, Spinner } from './ui';
 
-type RecommendationSettings = AIRecommendation['recommendations'];
+type RecommendationSettings = AIRecommendationSettings;
 
+const recommendationFields: AIRecommendationField[] = [
+  'resolution',
+  'fps',
+  'encoder',
+  'bitrate',
+  'audio_bitrate',
+  'recording_format',
+  'recording_quality',
+];
 const resolutionOptions = ['1280x720', '1920x1080', '2560x1440', '3840x2160'];
 const fpsOptions = [30, 60, 120];
 const encoderOptions = ['apple vt h264', 'nvenc', 'x264', 'qsv', 'amd'];
@@ -19,8 +30,8 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="block rounded-lg bg-black p-4">
-      <span className="mb-2 block text-xs text-zinc-500">{label}</span>
+    <label className="block rounded-xl border border-zinc-800/60 bg-zinc-950/70 p-4 transition-colors focus-within:border-indigo-500/50">
+      <span className="mb-2 block text-xs uppercase tracking-wider text-zinc-500">{label}</span>
       {children}
     </label>
   );
@@ -35,21 +46,82 @@ function SelectField<T extends string | number>({
   options: T[];
   onChange: (value: T) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  const displayValue = String(value).toUpperCase();
+
   return (
-    <select
-      value={value}
-      onChange={(event) => {
-        const selected = options.find((option) => String(option) === event.target.value);
-        if (selected !== undefined) onChange(selected);
-      }}
-      className="w-full bg-transparent text-lg font-medium text-white outline-none"
-    >
-      {options.map((option) => (
-        <option key={String(option)} value={option} className="bg-zinc-950 text-white">
-          {String(option).toUpperCase()}
-        </option>
-      ))}
-    </select>
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setOpen(false);
+        }}
+        className="flex min-h-9 w-full items-center justify-between gap-3 rounded-lg border border-transparent bg-zinc-900/70 px-3 py-2 text-left text-base font-medium text-white transition-colors hover:border-zinc-700 hover:bg-zinc-900 focus:border-indigo-500/60 focus:outline-none"
+      >
+        <span className="min-w-0 truncate">{displayValue}</span>
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <path d="m5 7.5 5 5 5-5" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-30 mt-2 max-h-56 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 p-1 shadow-2xl shadow-black/40"
+        >
+          {options.map((option) => {
+            const selected = String(option) === String(value);
+            return (
+              <button
+                key={String(option)}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(option);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+                  selected
+                    ? 'bg-indigo-500/15 text-indigo-200'
+                    : 'text-zinc-200 hover:bg-zinc-800'
+                }`}
+              >
+                <span>{String(option).toUpperCase()}</span>
+                {selected && <span className="text-xs text-indigo-300">Actual</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -77,36 +149,149 @@ function NumberField({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="min-w-0 flex-1 bg-transparent text-lg font-medium text-white outline-none"
+        className="min-w-0 flex-1 bg-transparent text-base font-medium text-white outline-none"
       />
-      <span className="shrink-0 text-lg font-medium text-white">{suffix}</span>
+      <span className="shrink-0 text-sm font-medium text-zinc-400">{suffix}</span>
     </div>
   );
 }
 
+function getChangedFields(
+  originalRecommendations: RecommendationSettings,
+  currentRecommendations: RecommendationSettings,
+): AIRecommendationField[] {
+  return recommendationFields.filter((field) => (
+    originalRecommendations[field] !== currentRecommendations[field]
+  ));
+}
+
+function isUsableRecommendation(settings: RecommendationSettings): boolean {
+  return Boolean(
+    /^\d{3,4}x\d{3,4}$/.test(settings.resolution)
+    && settings.fps > 0
+    && settings.bitrate > 0
+    && settings.audio_bitrate > 0
+    && settings.encoder.trim()
+    && settings.recording_format.trim()
+    && settings.recording_quality.trim(),
+  );
+}
+
 export function Recommendations() {
-  const { recommendation, isAnalyzing, setRecommendation } = useAppStore();
+  const {
+    recommendation,
+    isAnalyzing,
+    mode,
+    platform,
+    systemInfo,
+    setRecommendation,
+  } = useAppStore();
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [explanationSource, setExplanationSource] = useState<AIRecommendation['source'] | null>(null);
+  const explanationRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    if (!recommendation || !mode || !platform || !systemInfo) return undefined;
+
+    const originalRecommendations = recommendation.originalRecommendations ?? recommendation.recommendations;
+    const changedFields = getChangedFields(originalRecommendations, recommendation.recommendations);
+    if (changedFields.length === 0 || !isUsableRecommendation(recommendation.recommendations)) {
+      setIsExplaining(false);
+      setExplanationSource(null);
+      if (
+        changedFields.length === 0
+        && recommendation.originalReasoning
+        && recommendation.reasoning !== recommendation.originalReasoning
+      ) {
+        setRecommendation({
+          ...recommendation,
+          reasoning: recommendation.originalReasoning,
+        });
+      }
+      return undefined;
+    }
+
+    const requestId = explanationRequestIdRef.current + 1;
+    explanationRequestIdRef.current = requestId;
+    setIsExplaining(true);
+
+    const request = {
+      systemInfo,
+      mode,
+      platform,
+      originalRecommendations,
+      currentRecommendations: recommendation.recommendations,
+      changedFields,
+    };
+
+    const timeoutId = window.setTimeout(async () => {
+      const explanation = await window.electronAPI?.ai.explainRecommendation(request)
+        .catch(() => getLocalRecommendationExplanation(request))
+        ?? getLocalRecommendationExplanation(request);
+
+      if (explanationRequestIdRef.current !== requestId) return;
+
+      const latestRecommendation = useAppStore.getState().recommendation;
+      if (!latestRecommendation) return;
+
+      setRecommendation({
+        ...latestRecommendation,
+        originalRecommendations: latestRecommendation.originalRecommendations ?? originalRecommendations,
+        reasoning: explanation.reasoning,
+      });
+      setExplanationSource(explanation.source);
+      setIsExplaining(false);
+    }, 700);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    mode,
+    platform,
+    recommendation?.originalRecommendations?.audio_bitrate,
+    recommendation?.originalRecommendations?.bitrate,
+    recommendation?.originalRecommendations?.encoder,
+    recommendation?.originalRecommendations?.fps,
+    recommendation?.originalRecommendations?.recording_format,
+    recommendation?.originalRecommendations?.recording_quality,
+    recommendation?.originalRecommendations?.resolution,
+    recommendation?.originalReasoning,
+    recommendation?.recommendations.audio_bitrate,
+    recommendation?.recommendations.bitrate,
+    recommendation?.recommendations.encoder,
+    recommendation?.recommendations.fps,
+    recommendation?.recommendations.recording_format,
+    recommendation?.recommendations.recording_quality,
+    recommendation?.recommendations.resolution,
+    setRecommendation,
+    systemInfo,
+  ]);
 
   if (isAnalyzing) {
     return (
-      <div className="mb-8 p-6 bg-zinc-900 rounded-xl border border-zinc-800">
-        <h3 className="text-sm font-semibold text-zinc-400 mb-4 uppercase tracking-wider">
-          AI Recommended Settings
-        </h3>
+      <Section title="Configuracion recomendada" icon={<IconSliders className="h-4 w-4" />}>
         <div className="flex items-center gap-3">
-          <div className="animate-spin w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full" />
-          <span className="text-zinc-400">Getting AI recommendations...</span>
+          <Spinner />
+          <span className="text-sm text-zinc-400">Obteniendo recomendaciones...</span>
         </div>
-      </div>
+      </Section>
     );
   }
 
   if (!recommendation) return null;
 
   const { recommendations, reasoning } = recommendation;
+  const originalRecommendations = recommendation.originalRecommendations ?? recommendations;
+  const changedFields = getChangedFields(originalRecommendations, recommendations);
+  const hasUserChanges = changedFields.length > 0;
   const updateRecommendations = (patch: Partial<RecommendationSettings>) => {
+    const baselineRecommendations = recommendation.originalRecommendations ?? recommendation.recommendations;
+    const baselineReasoning = recommendation.originalReasoning ?? recommendation.reasoning;
     setRecommendation({
       ...recommendation,
+      originalRecommendations: baselineRecommendations,
+      originalReasoning: baselineReasoning,
       recommendations: {
         ...recommendations,
         ...patch,
@@ -115,19 +300,22 @@ export function Recommendations() {
   };
 
   return (
-    <div className="mb-8 p-6 bg-zinc-900 rounded-xl border border-indigo-500/50">
-      <h3 className="text-sm font-semibold text-indigo-400 mb-4 uppercase tracking-wider">
-        AI Recommended Settings
-      </h3>
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <Field label="Resolution">
+    <Section title="Configuracion recomendada" icon={<IconSliders className="h-4 w-4" />} accent>
+      {recommendation.source === 'local' && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+          <IconAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>La IA no respondio. Esta es una recomendacion local de respaldo generada por OBSREC.</span>
+        </div>
+      )}
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Resolucion">
           <SelectField
             value={recommendations.resolution}
             options={resolutionOptions}
             onChange={(resolution) => updateRecommendations({ resolution })}
           />
         </Field>
-        <Field label="Framerate">
+        <Field label="FPS">
           <SelectField
             value={recommendations.fps}
             options={fpsOptions}
@@ -141,7 +329,7 @@ export function Recommendations() {
             onChange={(encoder) => updateRecommendations({ encoder })}
           />
         </Field>
-        <Field label="Bitrate">
+        <Field label="Bitrate de video">
           <NumberField
             value={recommendations.bitrate}
             min={500}
@@ -158,7 +346,7 @@ export function Recommendations() {
             onChange={(audio_bitrate) => updateRecommendations({ audio_bitrate })}
           />
         </Field>
-        <Field label="Recording">
+        <Field label="Grabacion">
           <div className="grid grid-cols-2 gap-3">
             <SelectField
               value={recommendations.recording_format}
@@ -173,10 +361,24 @@ export function Recommendations() {
           </div>
         </Field>
       </div>
-      <div className="bg-black p-4 rounded-lg border-l-4 border-indigo-500">
-        <span className="text-xs text-zinc-500 block mb-2">WHY THIS CONFIG?</span>
-        <p className="text-sm text-zinc-300">{reasoning}</p>
+      <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/[0.06] p-4">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="block text-xs font-semibold uppercase tracking-wider text-indigo-300">
+            Por que esta configuracion?
+          </span>
+          {hasUserChanges && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-indigo-400/30 bg-indigo-400/10 px-2.5 py-1 text-xs font-medium text-indigo-200">
+              {isExplaining && <Spinner className="h-3 w-3" />}
+              {isExplaining
+                ? 'IA recalculando'
+                : explanationSource === 'local'
+                  ? 'Analisis actualizado'
+                  : 'IA actualizada'}
+            </span>
+          )}
+        </div>
+        <p className="text-sm leading-relaxed text-zinc-300">{reasoning}</p>
       </div>
-    </div>
+    </Section>
   );
 }

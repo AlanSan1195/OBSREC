@@ -22,7 +22,13 @@ export interface OBSAudioFilterConfig {
   compressorRatio: number;
   compressorThresholdDb: number;
   limiterThresholdDb: number;
+  noiseSuppression: boolean;
 }
+
+export type OBSAudioMonitorType =
+  | 'OBS_MONITORING_TYPE_NONE'
+  | 'OBS_MONITORING_TYPE_MONITOR_ONLY'
+  | 'OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT';
 
 export interface OBSAudioConfig {
   inputName: string;
@@ -30,6 +36,12 @@ export interface OBSAudioConfig {
   deviceName?: string;
   mono: boolean;
   filters: OBSAudioFilterConfig;
+  monitorType?: OBSAudioMonitorType;
+  syncOffsetMs?: number;
+  ducking?: {
+    enabled: boolean;
+    desktopInputName: string;
+  };
 }
 
 export interface OBSConfig {
@@ -74,6 +86,15 @@ export interface OBSAudioSettingsSnapshot {
   volumeDb: number;
   monitorType: string;
   syncOffsetMs: number;
+  desktopAudio?: {
+    inputName: string;
+    duckingConfigured: boolean;
+  };
+  duckingTargets: {
+    inputName: string;
+    inputKind: string;
+    duckingConfigured: boolean;
+  }[];
   filters: OBSAudioFilterSnapshot[];
   obsrecFiltersConfigured: boolean;
   monoConfigured: boolean;
@@ -92,6 +113,12 @@ export interface OBSSettingsSnapshot {
   recordingFormat: string;
   recordingQuality: string;
   audio?: OBSAudioSettingsSnapshot;
+}
+
+export interface OBSBackup {
+  createdAt: string;
+  appliedByObsrec: true;
+  snapshot: OBSSettingsSnapshot;
 }
 
 export interface SystemInfo {
@@ -122,15 +149,33 @@ export interface AIRecommendationRequest {
   platform: OBSPlatform;
 }
 
+export type AIRecommendationSettings = {
+  resolution: string;
+  fps: number;
+  encoder: string;
+  bitrate: number;
+  audio_bitrate: number;
+  recording_format: string;
+  recording_quality: string;
+};
+
+export type AIRecommendationField = keyof AIRecommendationSettings;
+
+export interface AIRecommendationExplanationRequest extends AIRecommendationRequest {
+  originalRecommendations: AIRecommendationSettings;
+  currentRecommendations: AIRecommendationSettings;
+  changedFields: AIRecommendationField[];
+}
+
+export interface AIRecommendationExplanation {
+  source: 'ai' | 'local';
+  reasoning: string;
+}
+
 export interface AIRecommendation {
-  recommendations: {
-    resolution: string;
-    fps: number;
-    encoder: string;
-    bitrate: number;
-    audio_bitrate: number;
-    recording_format: string;
-    recording_quality: string;
-  };
+  source: 'ai' | 'local';
+  recommendations: AIRecommendationSettings;
+  originalRecommendations?: AIRecommendationSettings;
+  originalReasoning?: string;
   reasoning: string;
 }

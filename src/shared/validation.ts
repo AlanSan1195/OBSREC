@@ -1,4 +1,4 @@
-import type { AIRecommendation, AIRecommendationRequest, OBSAudioConfig, OBSConfig, OBSConnectionSettings, OBSMode, OBSPlatform, SystemInfo } from './types';
+import type { AIRecommendation, AIRecommendationExplanation, AIRecommendationExplanationRequest, AIRecommendationField, AIRecommendationRequest, AIRecommendationSettings, OBSBackup, OBSAudioConfig, OBSConfig, OBSConnectionSettings, OBSMode, OBSPlatform, OBSSettingsSnapshot, SystemInfo } from './types';
 
 type ValidationResult<T> =
   | { success: true; value: T }
@@ -6,6 +6,20 @@ type ValidationResult<T> =
 
 const modes: OBSMode[] = ['stream_record', 'stream_only', 'record_only'];
 const platforms: OBSPlatform[] = ['twitch', 'youtube'];
+const recommendationFields: AIRecommendationField[] = [
+  'resolution',
+  'fps',
+  'encoder',
+  'bitrate',
+  'audio_bitrate',
+  'recording_format',
+  'recording_quality',
+];
+const monitorTypes = [
+  'OBS_MONITORING_TYPE_NONE',
+  'OBS_MONITORING_TYPE_MONITOR_ONLY',
+  'OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT',
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -73,6 +87,29 @@ export function validateOBSAudioConfig(value: unknown): ValidationResult<OBSAudi
     return { success: false, message: 'Limiter threshold must be between -60 and 0 dB.' };
   }
 
+  if (typeof filters.noiseSuppression !== 'boolean') {
+    return { success: false, message: 'Noise suppression setting must be a boolean.' };
+  }
+
+  if (value.monitorType !== undefined && (typeof value.monitorType !== 'string' || !monitorTypes.includes(value.monitorType))) {
+    return { success: false, message: 'Audio monitor type is invalid.' };
+  }
+
+  if (value.syncOffsetMs !== undefined && (!isFiniteNumber(value.syncOffsetMs) || value.syncOffsetMs < -950 || value.syncOffsetMs > 950)) {
+    return { success: false, message: 'Audio sync offset must be between -950 and 950 ms.' };
+  }
+
+  let ducking: OBSAudioConfig['ducking'];
+  if (value.ducking !== undefined) {
+    if (!isRecord(value.ducking) || typeof value.ducking.enabled !== 'boolean' || !isNonEmptyString(value.ducking.desktopInputName)) {
+      return { success: false, message: 'Audio ducking settings are incomplete.' };
+    }
+    ducking = {
+      enabled: value.ducking.enabled,
+      desktopInputName: value.ducking.desktopInputName.trim(),
+    };
+  }
+
   return {
     success: true,
     value: {
@@ -85,7 +122,11 @@ export function validateOBSAudioConfig(value: unknown): ValidationResult<OBSAudi
         compressorRatio: Number(filters.compressorRatio.toFixed(1)),
         compressorThresholdDb: Number(filters.compressorThresholdDb.toFixed(1)),
         limiterThresholdDb: Number(filters.limiterThresholdDb.toFixed(1)),
+        noiseSuppression: filters.noiseSuppression,
       },
+      monitorType: monitorTypes.includes(value.monitorType as string) ? value.monitorType as OBSAudioConfig['monitorType'] : undefined,
+      syncOffsetMs: typeof value.syncOffsetMs === 'number' ? Math.round(value.syncOffsetMs) : undefined,
+      ducking,
     },
   };
 }
@@ -261,7 +302,70 @@ export function validateAIRecommendationRequest(value: unknown): ValidationResul
   };
 }
 
-export function validateAIRecommendation(value: unknown): ValidationResult<AIRecommendation> {
+function validateAIRecommendationSettings(value: unknown, label: string): ValidationResult<AIRecommendationSettings> {
+  const result = validateAIRecommendation({ recommendations: value, reasoning: 'Valid recommendation settings.' });
+  if (!result.success) {
+    return { success: false, message: `${label}: ${result.message}` };
+  }
+
+  return { success: true, value: result.value.recommendations };
+}
+
+export function validateAIRecommendationExplanationRequest(value: unknown): ValidationResult<AIRecommendationExplanationRequest> {
+  if (!isRecord(value)) {
+    return { success: false, message: 'AI recommendation explanation request must be an object.' };
+  }
+
+  const baseRequest = validateAIRecommendationRequest(value);
+  if (!baseRequest.success) {
+    return baseRequest;
+  }
+
+  const originalRecommendations = validateAIRecommendationSettings(value.originalRecommendations, 'Original recommendation');
+  if (!originalRecommendations.success) {
+    return originalRecommendations;
+  }
+
+  const currentRecommendations = validateAIRecommendationSettings(value.currentRecommendations, 'Current recommendation');
+  if (!currentRecommendations.success) {
+    return currentRecommendations;
+  }
+
+  if (!Array.isArray(value.changedFields) || value.changedFields.length === 0) {
+    return { success: false, message: 'Changed recommendation fields are required.' };
+  }
+
+  const changedFields = Array.from(new Set(value.changedFields));
+  if (!changedFields.every((field): field is AIRecommendationField => recommendationFields.includes(field as AIRecommendationField))) {
+    return { success: false, message: 'Changed recommendation fields include an unsupported field.' };
+  }
+
+  return {
+    success: true,
+    value: {
+      ...baseRequest.value,
+      originalRecommendations: originalRecommendations.value,
+      currentRecommendations: currentRecommendations.value,
+      changedFields,
+    },
+  };
+}
+
+export function validateAIRecommendationExplanation(value: unknown): ValidationResult<AIRecommendationExplanation> {
+  if (!isRecord(value) || !isNonEmptyString(value.reasoning)) {
+    return { success: false, message: 'AI recommendation explanation is incomplete.' };
+  }
+
+  return {
+    success: true,
+    value: {
+      source: value.source === 'local' ? 'local' : 'ai',
+      reasoning: value.reasoning.trim(),
+    },
+  };
+}
+
+export function validateAIRecommendation(value: unknown): ValidationResult<Omit<AIRecommendation, 'source'>> {
   if (!isRecord(value) || !isRecord(value.recommendations)) {
     return { success: false, message: 'AI recommendation is incomplete.' };
   }
@@ -310,6 +414,55 @@ export function validateAIRecommendation(value: unknown): ValidationResult<AIRec
         recording_quality: recommendation.recording_quality.trim().toLowerCase(),
       },
       reasoning: isNonEmptyString(value.reasoning) ? value.reasoning : 'No reasoning was provided.',
+    },
+  };
+}
+
+export function validateOBSBackup(value: unknown): ValidationResult<OBSBackup> {
+  if (!isRecord(value) || !isNonEmptyString(value.createdAt) || value.appliedByObsrec !== true || !isRecord(value.snapshot)) {
+    return { success: false, message: 'OBS backup is incomplete.' };
+  }
+
+  const snapshot = value.snapshot;
+  if (
+    !isNonEmptyString(snapshot.streamServer)
+    || !isNonEmptyString(snapshot.baseResolution)
+    || !isNonEmptyString(snapshot.outputResolution)
+    || !isPositiveNumber(snapshot.fps)
+    || !isNonEmptyString(snapshot.encoder)
+    || typeof snapshot.bitrate !== 'number'
+    || typeof snapshot.audioBitrate !== 'number'
+    || !isNonEmptyString(snapshot.recordingFormat)
+    || !isNonEmptyString(snapshot.recordingQuality)
+  ) {
+    return { success: false, message: 'OBS backup snapshot is incomplete.' };
+  }
+
+  const baseResolution = parseResolution(snapshot.baseResolution);
+  if (!baseResolution.success) return baseResolution;
+
+  const outputResolution = parseResolution(snapshot.outputResolution);
+  if (!outputResolution.success) return outputResolution;
+
+  const backupSnapshot: OBSSettingsSnapshot = {
+    streamServer: snapshot.streamServer.trim(),
+    baseResolution: snapshot.baseResolution.trim(),
+    outputResolution: snapshot.outputResolution.trim(),
+    fps: Math.round(snapshot.fps),
+    encoder: snapshot.encoder.trim(),
+    bitrate: Math.round(snapshot.bitrate),
+    audioBitrate: Math.round(snapshot.audioBitrate),
+    recordingFormat: snapshot.recordingFormat.trim(),
+    recordingQuality: snapshot.recordingQuality.trim(),
+    audio: isRecord(snapshot.audio) ? snapshot.audio as unknown as OBSSettingsSnapshot['audio'] : undefined,
+  };
+
+  return {
+    success: true,
+    value: {
+      createdAt: value.createdAt.trim(),
+      appliedByObsrec: true,
+      snapshot: backupSnapshot,
     },
   };
 }
