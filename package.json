@@ -57,10 +57,12 @@
       "package.json"
     ],
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "artifactName": "OBSREC-Mac.${ext}"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "OBSREC-Windows-Setup.${ext}"
     }
   }
 }
