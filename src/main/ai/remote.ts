@@ -2,7 +2,7 @@ import type { AIRecommendation, AIRecommendationExplanation, AIRecommendationExp
 import { validateAIRecommendation, validateAIRecommendationExplanation } from '../../shared/validation';
 import { getInstallId } from '../install-id';
 
-const defaultApiUrl = 'https://obsrec.vercel.app';
+const defaultApiUrl = 'https://obsee.vercel.app';
 
 export class RemoteAIError extends Error {
   constructor(message: string, public readonly status?: number) {
