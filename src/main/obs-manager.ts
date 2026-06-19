@@ -210,7 +210,7 @@ export class OBSManager {
       const candidate = await this.getPrimaryAudioInput();
 
       if (!candidate) {
-        return { success: false, message: 'OBSREC no encontro una entrada de microfono en OBS. Agrega un dispositivo Mic/Aux o una fuente Audio Input Capture y luego actualiza el audio.' };
+        return { success: false, message: 'obsee no encontro una entrada de microfono en OBS. Agrega un dispositivo Mic/Aux o una fuente Audio Input Capture y luego actualiza el audio.' };
       }
 
       const inputSettings = await this.obs.call('GetInputSettings', { inputName: candidate.name });
@@ -256,7 +256,7 @@ export class OBSManager {
       const primaryDuckingTarget = duckingTargets[0];
 
       if (!monoSupported) {
-        warnings.push('OBS WebSocket no expone la casilla Mono de Propiedades avanzadas de audio para esta entrada. OBSREC puede aplicar filtros automaticamente, pero Mono debe activarse manualmente en OBS.');
+        warnings.push('OBS WebSocket no expone la casilla Mono de Propiedades avanzadas de audio para esta entrada. obsee puede aplicar filtros automaticamente, pero Mono debe activarse manualmente en OBS.');
       }
 
       return {

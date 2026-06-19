@@ -78,7 +78,7 @@ export function AudioConfiguration() {
         setDetectionMessage(result.message);
       }
     }).catch(() => {
-      setDetectionMessage('OBSREC no pudo leer las entradas de audio desde OBS.');
+      setDetectionMessage('obsee no pudo leer las entradas de audio desde OBS.');
     });
   }, [autoDetectTried, obsConnected, obsAudioSnapshot, refreshAudioSnapshot]);
 
@@ -108,7 +108,7 @@ export function AudioConfiguration() {
       stream.getTracks().forEach((track) => track.stop());
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter((device) => device.kind === 'audioinput');
-      setLocalDeviceStatus(`${audioInputs.length} microfono${audioInputs.length === 1 ? '' : 's'} local${audioInputs.length === 1 ? '' : 'es'} visible${audioInputs.length === 1 ? '' : 's'} para OBSREC`);
+      setLocalDeviceStatus(`${audioInputs.length} microfono${audioInputs.length === 1 ? '' : 's'} local${audioInputs.length === 1 ? '' : 'es'} visible${audioInputs.length === 1 ? '' : 's'} para obsee`);
     } catch {
       setLocalDeviceStatus('Se nego el permiso del microfono local; los datos de OBS siguen disponibles');
     }
@@ -157,8 +157,8 @@ export function AudioConfiguration() {
         <div className="rounded-none border border-border bg-white/[0.02] p-4">
           <p className="text-sm text-text">
             {obsConnected
-              ? 'OBSREC esta buscando un dispositivo Mic/Aux o una fuente Audio Input Capture para aplicar la configuracion de voz.'
-              : 'Conecta OBS para detectar tu microfono y aplicar la configuracion de voz de OBSREC.'}
+              ? 'obsee esta buscando un dispositivo Mic/Aux o una fuente Audio Input Capture para aplicar la configuracion de voz.'
+              : 'Conecta OBS para detectar tu microfono y aplicar la configuracion de voz de obsee.'}
           </p>
           {detectionMessage && (
             <p className="mt-3 text-sm text-amber-300">{detectionMessage}</p>
@@ -174,7 +174,7 @@ export function AudioConfiguration() {
   const syncFrames = [1, 2, 3, 4, 5, 6];
   const selectedDuckingTargetInfo = obsAudioSnapshot.duckingTargets.find((target) => target.inputName === selectedDuckingTarget);
   const stageTwoActions = [
-    noiseSuppression ? 'Supresion de ruido RNNoise' : 'Sin supresion de ruido OBSREC',
+    noiseSuppression ? 'Supresion de ruido RNNoise' : 'Sin supresion de ruido obsee',
     monitorType === 'OBS_MONITORING_TYPE_NONE' ? 'Sin monitoreo de microfono' : monitorType === 'OBS_MONITORING_TYPE_MONITOR_ONLY' ? 'Solo monitoreo' : 'Monitorizar y emitir',
     `Sync de audio: ${syncOffsetMs} ms`,
     duckingEnabled && selectedDuckingTarget ? `Ducking sobre ${selectedDuckingTarget}` : 'Ducking desactivado',
@@ -330,7 +330,7 @@ export function AudioConfiguration() {
                 <span className="block text-xs text-text-muted">
                   {obsAudioSnapshot.duckingTargets.length > 0
                     ? `Aplica un compresor a ${selectedDuckingTarget || obsAudioSnapshot.duckingTargets[0].inputName} que reduce su volumen cuando el microfono detecta voz.`
-                    : 'OBSREC no encontro una fuente de musica o audio de escritorio. Agrega una fuente multimedia, VLC o audio de escritorio y pulsa Actualizar OBS.'}
+                    : 'obsee no encontro una fuente de musica o audio de escritorio. Agrega una fuente multimedia, VLC o audio de escritorio y pulsa Actualizar OBS.'}
                 </span>
               </span>
             </label>
@@ -389,7 +389,7 @@ export function AudioConfiguration() {
         ) : (
           <>
             <IconMic className="h-5 w-5" />
-            <span><span className="opacity-60">./</span>apply --voice obsrec</span>
+            <span><span className="opacity-60">./</span>apply --voice obsee</span>
           </>
         )}
       </button>
@@ -403,13 +403,13 @@ export function AudioConfiguration() {
           void handleApply();
         }}
       >
-        <p>Aplicar configuracion de voz OBSREC a "{selectedDevice?.name ?? obsAudioSnapshot.selectedDeviceName ?? obsAudioSnapshot.inputName}"?</p>
+        <p>Aplicar configuracion de voz obsee a "{selectedDevice?.name ?? obsAudioSnapshot.selectedDeviceName ?? obsAudioSnapshot.inputName}"?</p>
         <p>
           {obsAudioSnapshot.monoSupported
             ? 'Se activara Mono para esta entrada.'
-            : 'OBS WebSocket no expone Mono para esta entrada, asi que OBSREC lo dejara como paso manual en OBS.'}
+            : 'OBS WebSocket no expone Mono para esta entrada, asi que obsee lo dejara como paso manual en OBS.'}
         </p>
-        <p>OBSREC aplicara ganancia de +10 dB, compresor 4:1 a -10 dB y limitador a -1 dB.</p>
+        <p>obsee aplicara ganancia de +10 dB, compresor 4:1 a -10 dB y limitador a -1 dB.</p>
         <ul className="list-disc space-y-1 pl-5">
           {stageTwoActions.map((action) => (
             <li key={action}>{action}</li>

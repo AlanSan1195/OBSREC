@@ -3,7 +3,7 @@ import type { AIRecommendation, AIRecommendationExplanation, AIRecommendationExp
 
 function getElectronAPI() {
   if (!window.electronAPI) {
-    throw new Error('OBSREC debe abrirse en la app de escritorio de Electron para controlar OBS. La vista del navegador solo muestra la interfaz, pero no puede conectarse a OBS WebSocket.');
+    throw new Error('obsee debe abrirse en la app de escritorio de Electron para controlar OBS. La vista del navegador solo muestra la interfaz, pero no puede conectarse a OBS WebSocket.');
   }
 
   return window.electronAPI;

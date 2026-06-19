@@ -17,7 +17,7 @@ export function StatusBar() {
             }`}
           />
         </span>
-        <span className="text-text-faint">obsrec@local:~$</span>
+        <span className="text-text-faint">obsee@local:~$</span>
         <span className="text-text-muted">{obsMessage}</span>
         <span className="ml-auto hidden text-text-faint sm:block">
           {obsConnected ? 'ws · connected' : 'ws · closed'}

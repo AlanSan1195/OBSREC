@@ -9,11 +9,11 @@ export const defaultAudioConfig = {
 };
 
 export const obsrecFilterNames = {
-  noise: 'OBSREC - Noise Suppression',
-  gain: 'OBSREC - Gain',
-  compressor: 'OBSREC - Compressor',
-  limiter: 'OBSREC - Limiter',
-  ducking: 'OBSREC - Ducking',
+  noise: 'obsee - Noise Suppression',
+  gain: 'obsee - Gain',
+  compressor: 'obsee - Compressor',
+  limiter: 'obsee - Limiter',
+  ducking: 'obsee - Ducking',
 };
 
 export type OBSJsonSettings = Record<string, string | number | boolean>;

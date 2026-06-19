@@ -1,5 +1,5 @@
 {
-  "name": "obsrec",
+  "name": "obsee",
   "version": "1.0.0",
   "description": "OBS Auto Configuration Tool for Streamers",
   "main": "dist/main/index.js",
@@ -45,8 +45,8 @@
     "wait-on": "^8.0.0"
   },
   "build": {
-    "appId": "com.obsrec.app",
-    "productName": "OBSREC",
+    "appId": "com.obsee.app",
+    "productName": "obsee",
     "directories": {
       "output": "release"
     },
@@ -58,11 +58,11 @@
     ],
     "mac": {
       "target": "dmg",
-      "artifactName": "OBSREC-Mac.${ext}"
+      "artifactName": "obsee-Mac.${ext}"
     },
     "win": {
       "target": "nsis",
-      "artifactName": "OBSREC-Windows-Setup.${ext}"
+      "artifactName": "obsee-Windows-Setup.${ext}"
     }
   }
 }

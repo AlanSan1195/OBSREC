@@ -80,7 +80,7 @@ export async function checkRateLimit(request: ApiRequest): Promise<RateLimitResu
     if (maxCount > dailyLimit) {
       return {
         allowed: false,
-        message: `Limite diario de IA integrada alcanzado (${dailyLimit} solicitudes). OBSREC usara la recomendacion local hasta manana.`,
+        message: `Limite diario de IA integrada alcanzado (${dailyLimit} solicitudes). obsee usara la recomendacion local hasta manana.`,
         retryAfterSeconds: ttlSeconds,
       };
     }
@@ -92,7 +92,7 @@ export async function checkRateLimit(request: ApiRequest): Promise<RateLimitResu
   } catch {
     return {
       allowed: false,
-      message: 'La IA integrada no pudo verificar el limite de uso. OBSREC usara la recomendacion local para proteger costos.',
+      message: 'La IA integrada no pudo verificar el limite de uso. obsee usara la recomendacion local para proteger costos.',
       retryAfterSeconds: ttlSeconds,
     };
   }

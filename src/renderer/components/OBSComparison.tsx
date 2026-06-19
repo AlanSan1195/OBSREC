@@ -213,7 +213,7 @@ export function OBSComparison() {
         onConfirm={handleRestore}
       >
         <p>Restaurar la configuracion guardada el {readableBackupDate}?</p>
-        <p>OBSREC volvera a aplicar los valores de video, salida y servidor guardados en el ultimo respaldo.</p>
+        <p>obsee volvera a aplicar los valores de video, salida y servidor guardados en el ultimo respaldo.</p>
       </ConfirmDialog>
     </Section>
   );
