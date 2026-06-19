@@ -10,8 +10,9 @@ import { AudioConfiguration } from './components/AudioConfiguration';
 import { ImportButton } from './components/ImportButton';
 import { StatusBar } from './components/StatusBar';
 import { IconAlert, IconX } from './components/ui';
+import packageJson from '../../package.json';
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = packageJson.version;
 
 const modeLabels: Record<string, string> = {
   stream_record: 'stream + rec',
@@ -91,8 +92,31 @@ export default function App() {
       {/* hero */}
       <header className="mb-8 grid gap-6 lg:grid-cols-[1fr_300px]">
         <div className="flex flex-col justify-center">
-          <h1 className="font-display text-6xl font-black leading-none tracking-tight text-text sm:text-7xl">OBS
-            <span className="text-primary text-glow">REC</span>
+          <h1 className="flex items-center font-display text-6xl font-black leading-none tracking-[0.02em] text-text sm:text-7xl">
+            <span className="text-primary text-glow">obs</span>ee
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="ml-2 h-[0.72em] w-[0.72em] text-primary"
+              style={{ filter: 'drop-shadow(0 0 8px rgba(94, 255, 159, 0.7))' }}
+            >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M5 6a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1l0 -12" />
+              <path d="M8 10v-2h2m6 6v2h-2m-4 0h-2v-2m8 -4v-2h-2" />
+              <path d="M3 10h2" />
+              <path d="M3 14h2" />
+              <path d="M10 3v2" />
+              <path d="M14 3v2" />
+              <path d="M21 10h-2" />
+              <path d="M21 14h-2" />
+              <path d="M14 21v-2" />
+              <path d="M10 21v-2" />
+            </svg>
           </h1>
           <p className="mt-5 max-w-md text-sm leading-relaxed text-text-muted">Analiza tu equipo, detecta tu harware y obten la mejor configuracion para un stream o directo  de calidad{' '}
             <span className="text-text">antes</span> de aplicarlo.

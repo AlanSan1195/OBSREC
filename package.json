@@ -1,6 +1,6 @@
 {
   "name": "obsee",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "description": "OBS Auto Configuration Tool for Streamers",
   "main": "dist/main/index.js",
   "scripts": {
