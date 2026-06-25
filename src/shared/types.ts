@@ -17,12 +17,63 @@ export interface OBSConnectionSettings {
   password: string;
 }
 
+export type MicType = 'condenser' | 'dynamic' | 'electret' | 'unknown';
+export type MicConnection = 'usb' | 'xlr' | 'analog' | 'wireless' | 'unknown';
+export type NoiseSuppressMethod = 'rnnoise' | 'speex' | 'nvafx';
+
+export interface OBSAudioNoiseGate {
+  enabled: boolean;
+  closeThresholdDb: number;
+  openThresholdDb: number;
+}
+
 export interface OBSAudioFilterConfig {
   gainDb: number;
+  // Por defecto true: si se omite, se conserva el comportamiento fijo previo.
+  gainEnabled?: boolean;
   compressorRatio: number;
   compressorThresholdDb: number;
+  compressorEnabled?: boolean;
   limiterThresholdDb: number;
+  limiterEnabled?: boolean;
   noiseSuppression: boolean;
+  noiseSuppressionMethod?: NoiseSuppressMethod;
+  noiseGate?: OBSAudioNoiseGate;
+}
+
+// --- Perfilado de microfono con IA ---
+
+export interface MicProfileRequest {
+  deviceName: string;
+  inputKind?: string;
+  mode: OBSMode;
+  // Lo inyecta el proceso main (process.platform); opcional desde el renderer.
+  os?: string;
+}
+
+export interface MicProfile {
+  identified: boolean;
+  model: string;
+  type: MicType;
+  connection: MicConnection;
+  hasBuiltinDsp: boolean;
+  summary: string;
+  sources?: string[];
+}
+
+export interface MicFilterRecommendations {
+  noiseSuppression: { enabled: boolean; method: NoiseSuppressMethod; reason: string };
+  noiseGate: { enabled: boolean; closeThresholdDb: number; openThresholdDb: number; reason: string };
+  gain: { enabled: boolean; db: number; reason: string };
+  compressor: { enabled: boolean; ratio: number; thresholdDb: number; reason: string };
+  limiter: { enabled: boolean; thresholdDb: number; reason: string };
+}
+
+export interface MicProfileResponse {
+  source: 'ai' | 'local';
+  profile: MicProfile;
+  filters: MicFilterRecommendations;
+  reasoning: string;
 }
 
 export type OBSAudioMonitorType =

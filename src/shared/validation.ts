@@ -1,4 +1,4 @@
-import type { AIRecommendation, AIRecommendationExplanation, AIRecommendationExplanationRequest, AIRecommendationField, AIRecommendationRequest, AIRecommendationSettings, ApplyGuidedSourceDeviceInput, BeginGuidedSourceInput, CameraLayout, CreateGuidedSourceConfig, OBSBackup, OBSAudioConfig, OBSConfig, OBSConnectionSettings, OBSMode, OBSPlatform, OBSSettingsSnapshot, SetCameraLayoutInput, SourceKindFriendly, SystemInfo } from './types';
+import type { AIRecommendation, AIRecommendationExplanation, AIRecommendationExplanationRequest, AIRecommendationField, AIRecommendationRequest, AIRecommendationSettings, ApplyGuidedSourceDeviceInput, BeginGuidedSourceInput, CameraLayout, CreateGuidedSourceConfig, MicConnection, MicProfileRequest, MicProfileResponse, MicType, NoiseSuppressMethod, OBSAudioConfig, OBSAudioNoiseGate, OBSBackup, OBSConfig, OBSConnectionSettings, OBSMode, OBSPlatform, OBSSettingsSnapshot, SetCameraLayoutInput, SourceKindFriendly, SystemInfo } from './types';
 
 type ValidationResult<T> =
   | { success: true; value: T }
@@ -22,6 +22,9 @@ const monitorTypes = [
 ];
 const sourceKindsFriendly: SourceKindFriendly[] = ['camera', 'display', 'window', 'game_console', 'image'];
 const cameraLayouts: CameraLayout[] = ['facecam', 'fullscreen'];
+const noiseSuppressMethods: NoiseSuppressMethod[] = ['rnnoise', 'speex', 'nvafx'];
+const micTypes: MicType[] = ['condenser', 'dynamic', 'electret', 'unknown'];
+const micConnections: MicConnection[] = ['usb', 'xlr', 'analog', 'wireless', 'unknown'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -93,6 +96,27 @@ export function validateOBSAudioConfig(value: unknown): ValidationResult<OBSAudi
     return { success: false, message: 'Noise suppression setting must be a boolean.' };
   }
 
+  const noiseSuppressionMethod: NoiseSuppressMethod = noiseSuppressMethods.includes(filters.noiseSuppressionMethod as NoiseSuppressMethod)
+    ? filters.noiseSuppressionMethod as NoiseSuppressMethod
+    : 'rnnoise';
+
+  let noiseGate: OBSAudioNoiseGate | undefined;
+  if (filters.noiseGate !== undefined) {
+    if (!isRecord(filters.noiseGate) || typeof filters.noiseGate.enabled !== 'boolean') {
+      return { success: false, message: 'Noise gate settings are incomplete.' };
+    }
+    const close = filters.noiseGate.closeThresholdDb;
+    const open = filters.noiseGate.openThresholdDb;
+    if (!isFiniteNumber(close) || close < -90 || close > 0 || !isFiniteNumber(open) || open < -90 || open > 0) {
+      return { success: false, message: 'Noise gate thresholds must be between -90 and 0 dB.' };
+    }
+    noiseGate = {
+      enabled: filters.noiseGate.enabled,
+      closeThresholdDb: Number(close.toFixed(1)),
+      openThresholdDb: Number(open.toFixed(1)),
+    };
+  }
+
   if (value.monitorType !== undefined && (typeof value.monitorType !== 'string' || !monitorTypes.includes(value.monitorType))) {
     return { success: false, message: 'Audio monitor type is invalid.' };
   }
@@ -121,10 +145,15 @@ export function validateOBSAudioConfig(value: unknown): ValidationResult<OBSAudi
       mono: value.mono,
       filters: {
         gainDb: Number(filters.gainDb.toFixed(1)),
+        gainEnabled: filters.gainEnabled !== false,
         compressorRatio: Number(filters.compressorRatio.toFixed(1)),
         compressorThresholdDb: Number(filters.compressorThresholdDb.toFixed(1)),
+        compressorEnabled: filters.compressorEnabled !== false,
         limiterThresholdDb: Number(filters.limiterThresholdDb.toFixed(1)),
+        limiterEnabled: filters.limiterEnabled !== false,
         noiseSuppression: filters.noiseSuppression,
+        noiseSuppressionMethod,
+        noiseGate,
       },
       monitorType: monitorTypes.includes(value.monitorType as string) ? value.monitorType as OBSAudioConfig['monitorType'] : undefined,
       syncOffsetMs: typeof value.syncOffsetMs === 'number' ? Math.round(value.syncOffsetMs) : undefined,
@@ -609,6 +638,101 @@ export function validateCreateGuidedSourceConfig(value: unknown): ValidationResu
       deviceId: isNonEmptyString(value.deviceId) ? value.deviceId.trim() : undefined,
       imagePath: isNonEmptyString(value.imagePath) ? value.imagePath.trim() : undefined,
       fitToCanvas: value.fitToCanvas,
+    },
+  };
+}
+
+// --- Perfilado de microfono con IA ---
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (!isFiniteNumber(value)) return fallback;
+  const clamped = Math.min(max, Math.max(min, value));
+  return Number(clamped.toFixed(1));
+}
+
+function asReason(value: unknown): string {
+  return isNonEmptyString(value) ? value.trim().slice(0, 400) : '';
+}
+
+export function validateMicProfileRequest(value: unknown): ValidationResult<MicProfileRequest> {
+  if (!isRecord(value)) {
+    return { success: false, message: 'La solicitud de perfil de microfono debe ser un objeto.' };
+  }
+  if (!isNonEmptyString(value.deviceName) || value.deviceName.trim().length > 128) {
+    return { success: false, message: 'El nombre del microfono es obligatorio (1-128 caracteres).' };
+  }
+  if (!modes.includes(value.mode as OBSMode)) {
+    return { success: false, message: 'Modo de OBS no valido para el perfil de microfono.' };
+  }
+  return {
+    success: true,
+    value: {
+      deviceName: value.deviceName.trim(),
+      mode: value.mode as OBSMode,
+      inputKind: isNonEmptyString(value.inputKind) ? value.inputKind.trim() : undefined,
+      os: isNonEmptyString(value.os) ? value.os.trim() : undefined,
+    },
+  };
+}
+
+export function validateMicProfileResponse(value: unknown): ValidationResult<MicProfileResponse> {
+  if (!isRecord(value) || !isRecord(value.profile) || !isRecord(value.filters)) {
+    return { success: false, message: 'El perfil de microfono devuelto esta incompleto.' };
+  }
+
+  const profileRaw = value.profile;
+  const filtersRaw = value.filters;
+  const ns = isRecord(filtersRaw.noiseSuppression) ? filtersRaw.noiseSuppression : {};
+  const gate = isRecord(filtersRaw.noiseGate) ? filtersRaw.noiseGate : {};
+  const gain = isRecord(filtersRaw.gain) ? filtersRaw.gain : {};
+  const comp = isRecord(filtersRaw.compressor) ? filtersRaw.compressor : {};
+  const lim = isRecord(filtersRaw.limiter) ? filtersRaw.limiter : {};
+
+  return {
+    success: true,
+    value: {
+      source: value.source === 'local' ? 'local' : 'ai',
+      profile: {
+        identified: profileRaw.identified === true,
+        model: isNonEmptyString(profileRaw.model) ? profileRaw.model.trim().slice(0, 120) : 'Microfono',
+        type: micTypes.includes(profileRaw.type as MicType) ? profileRaw.type as MicType : 'unknown',
+        connection: micConnections.includes(profileRaw.connection as MicConnection) ? profileRaw.connection as MicConnection : 'unknown',
+        hasBuiltinDsp: profileRaw.hasBuiltinDsp === true,
+        summary: asReason(profileRaw.summary),
+        sources: Array.isArray(profileRaw.sources)
+          ? profileRaw.sources.filter(isNonEmptyString).map((url) => url.trim()).slice(0, 6)
+          : undefined,
+      },
+      filters: {
+        noiseSuppression: {
+          enabled: ns.enabled !== false,
+          method: noiseSuppressMethods.includes(ns.method as NoiseSuppressMethod) ? ns.method as NoiseSuppressMethod : 'rnnoise',
+          reason: asReason(ns.reason),
+        },
+        noiseGate: {
+          enabled: gate.enabled === true,
+          closeThresholdDb: clampNumber(gate.closeThresholdDb, -90, 0, -45),
+          openThresholdDb: clampNumber(gate.openThresholdDb, -90, 0, -35),
+          reason: asReason(gate.reason),
+        },
+        gain: {
+          enabled: gain.enabled !== false,
+          db: clampNumber(gain.db, -30, 30, 0),
+          reason: asReason(gain.reason),
+        },
+        compressor: {
+          enabled: comp.enabled !== false,
+          ratio: clampNumber(comp.ratio, 1, 32, 4),
+          thresholdDb: clampNumber(comp.thresholdDb, -60, 0, -18),
+          reason: asReason(comp.reason),
+        },
+        limiter: {
+          enabled: lim.enabled !== false,
+          thresholdDb: clampNumber(lim.thresholdDb, -60, 0, -1),
+          reason: asReason(lim.reason),
+        },
+      },
+      reasoning: isNonEmptyString(value.reasoning) ? value.reasoning.trim() : 'Sin explicacion.',
     },
   };
 }

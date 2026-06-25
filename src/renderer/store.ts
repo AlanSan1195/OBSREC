@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AIRecommendation, OBSAudioSettingsSnapshot, OBSConnectionSettings, OBSMode, OBSPlatform, OBSSettingsSnapshot, ResolvedSourceKind, Scene, SceneItemSummary, SystemInfo } from '../shared/types';
+import type { AIRecommendation, MicProfileResponse, OBSAudioSettingsSnapshot, OBSConnectionSettings, OBSMode, OBSPlatform, OBSSettingsSnapshot, ResolvedSourceKind, Scene, SceneItemSummary, SystemInfo } from '../shared/types';
 
 interface AppState {
   mode: OBSMode | null;
@@ -19,6 +19,8 @@ interface AppState {
   selectedSceneName: string | null;
   sceneSources: SceneItemSummary[];
   availableSourceKinds: ResolvedSourceKind[] | null;
+  micProfile: MicProfileResponse | null;
+  isProfilingMic: boolean;
 
   setMode: (mode: OBSMode) => void;
   setPlatform: (platform: OBSPlatform) => void;
@@ -37,6 +39,8 @@ interface AppState {
   setSelectedSceneName: (name: string | null) => void;
   setSceneSources: (sources: SceneItemSummary[]) => void;
   setAvailableSourceKinds: (kinds: ResolvedSourceKind[] | null) => void;
+  setMicProfile: (profile: MicProfileResponse | null) => void;
+  setIsProfilingMic: (value: boolean) => void;
   reset: () => void;
 }
 
@@ -62,6 +66,8 @@ export const useAppStore = create<AppState>((set) => ({
   selectedSceneName: null,
   sceneSources: [],
   availableSourceKinds: null,
+  micProfile: null,
+  isProfilingMic: false,
 
   setMode: (mode) => set({ mode }),
   setPlatform: (platform) => set({ platform }),
@@ -85,6 +91,8 @@ export const useAppStore = create<AppState>((set) => ({
   setSelectedSceneName: (selectedSceneName) => set({ selectedSceneName }),
   setSceneSources: (sceneSources) => set({ sceneSources }),
   setAvailableSourceKinds: (availableSourceKinds) => set({ availableSourceKinds }),
+  setMicProfile: (micProfile) => set({ micProfile }),
+  setIsProfilingMic: (isProfilingMic) => set({ isProfilingMic }),
   reset: () => set({
     systemInfo: null,
     recommendation: null,
@@ -96,5 +104,7 @@ export const useAppStore = create<AppState>((set) => ({
     selectedSceneName: null,
     sceneSources: [],
     availableSourceKinds: null,
+    micProfile: null,
+    isProfilingMic: false,
   }),
 }));

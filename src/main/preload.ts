@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AIRecommendationExplanationRequest, AIRecommendationRequest, ApplyGuidedSourceDeviceInput, BeginGuidedSourceInput, CreateGuidedSourceConfig, OBSAudioConfig, OBSConfig, OBSConnectionSettings, SetCameraLayoutInput } from '../shared/types';
+import type { AIRecommendationExplanationRequest, AIRecommendationRequest, ApplyGuidedSourceDeviceInput, BeginGuidedSourceInput, CreateGuidedSourceConfig, MicProfileRequest, OBSAudioConfig, OBSConfig, OBSConnectionSettings, SetCameraLayoutInput } from '../shared/types';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   obs: {
@@ -45,5 +45,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ai: {
     getRecommendation: (request: AIRecommendationRequest) => ipcRenderer.invoke('ai:get-recommendation', request),
     explainRecommendation: (request: AIRecommendationExplanationRequest) => ipcRenderer.invoke('ai:explain-recommendation', request),
+    profileMicrophone: (request: MicProfileRequest) => ipcRenderer.invoke('ai:profile-microphone', request),
   },
 });

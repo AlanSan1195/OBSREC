@@ -2,8 +2,9 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'path';
 import { obsManager } from './obs-manager';
 import dotenv from 'dotenv';
-import type { AIRecommendationExplanationRequest, AIRecommendationRequest } from '../shared/types';
+import type { AIRecommendationExplanationRequest, AIRecommendationRequest, MicProfileRequest } from '../shared/types';
 import { getLocalRecommendation, getLocalRecommendationExplanation } from '../shared/localRecommendation';
+import { getLocalMicProfile } from '../shared/localMicProfile';
 import {
   validateAIRecommendationExplanationRequest,
   validateAIRecommendationRequest,
@@ -11,6 +12,7 @@ import {
   validateBeginGuidedSource,
   validateCreateGuidedSourceConfig,
   validateInputName,
+  validateMicProfileRequest,
   validateOBSAudioConfig,
   validateOBSConfig,
   validateOBSConnectionSettings,
@@ -18,7 +20,7 @@ import {
   validateSetCameraLayout,
 } from '../shared/validation';
 import { loadBackup } from './backup-store';
-import { getRemoteAIUserMessage, getRemoteRecommendation, getRemoteRecommendationExplanation } from './ai/remote';
+import { getRemoteAIUserMessage, getRemoteMicProfile, getRemoteRecommendation, getRemoteRecommendationExplanation } from './ai/remote';
 
 dotenv.config();
 
@@ -341,6 +343,25 @@ ipcMain.handle('ai:get-recommendation', async (_, rawRequest: unknown) => {
     return {
       ...localRecommendation,
       reasoning: `${localRecommendation.reasoning} IA integrada no disponible: ${getRemoteAIUserMessage(error)}`,
+    };
+  }
+});
+
+ipcMain.handle('ai:profile-microphone', async (_, rawRequest: unknown) => {
+  const validation = validateMicProfileRequest(rawRequest);
+  if (!validation.success) {
+    throw new Error(validation.message);
+  }
+
+  const request: MicProfileRequest = { ...validation.value, os: process.platform };
+  try {
+    return await getRemoteMicProfile(request);
+  } catch (error) {
+    console.error('Error profiling microphone with integrated AI:', error);
+    const localProfile = getLocalMicProfile(request);
+    return {
+      ...localProfile,
+      reasoning: `${localProfile.reasoning} IA integrada no disponible: ${getRemoteAIUserMessage(error)}`,
     };
   }
 });

@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../store';
 import { useElectronAPI } from '../hooks/useElectronAPI';
-import type { OBSAudioConfig, OBSAudioDevice } from '../../shared/types';
+import type { MicProfileResponse, OBSAudioConfig, OBSAudioDevice, OBSAudioFilterConfig } from '../../shared/types';
 import { ConfirmDialog } from './ConfirmDialog';
-import { IconAlert, IconMic, IconRefresh, Section, Spinner } from './ui';
+import { IconAlert, IconCheck, IconMic, IconRefresh, IconSparkles, IconX, Section, Spinner } from './ui';
 
 const defaultFilters = {
   gainDb: 10,
@@ -35,16 +35,77 @@ export function createDefaultAudioConfig(inputName: string, device?: OBSAudioDev
   };
 }
 
+// Traduce la recomendacion de la IA al formato de filtros que aplica obsee.
+function filtersFromProfile(profile: MicProfileResponse): OBSAudioFilterConfig {
+  const f = profile.filters;
+  return {
+    gainDb: f.gain.db,
+    gainEnabled: f.gain.enabled,
+    compressorRatio: f.compressor.ratio,
+    compressorThresholdDb: f.compressor.thresholdDb,
+    compressorEnabled: f.compressor.enabled,
+    limiterThresholdDb: f.limiter.thresholdDb,
+    limiterEnabled: f.limiter.enabled,
+    noiseSuppression: f.noiseSuppression.enabled,
+    noiseSuppressionMethod: f.noiseSuppression.method,
+    noiseGate: {
+      enabled: f.noiseGate.enabled,
+      closeThresholdDb: f.noiseGate.closeThresholdDb,
+      openThresholdDb: f.noiseGate.openThresholdDb,
+    },
+  };
+}
+
+function safeHostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace('www.', '');
+  } catch {
+    return url.slice(0, 40);
+  }
+}
+
+// Lineas legibles que resumen lo que la IA aplicara u omitira.
+function aiFilterSummary(profile: MicProfileResponse): string[] {
+  const f = profile.filters;
+  const lines: string[] = [];
+  lines.push(f.noiseSuppression.enabled ? `Supresion de ruido (${f.noiseSuppression.method})` : 'Supresion de ruido: omitida');
+  lines.push(f.noiseGate.enabled ? `Compuerta de ruido: abre ${f.noiseGate.openThresholdDb} dB / cierra ${f.noiseGate.closeThresholdDb} dB` : 'Compuerta de ruido: omitida');
+  lines.push(f.gain.enabled ? `Ganancia ${f.gain.db > 0 ? '+' : ''}${f.gain.db} dB` : 'Ganancia: omitida');
+  lines.push(f.compressor.enabled ? `Compresor ${f.compressor.ratio}:1 a ${f.compressor.thresholdDb} dB` : 'Compresor: omitido');
+  lines.push(f.limiter.enabled ? `Limitador a ${f.limiter.thresholdDb} dB` : 'Limitador: omitido');
+  return lines;
+}
+
+const MIC_TYPE_LABELS: Record<string, string> = {
+  condenser: 'Condensador',
+  dynamic: 'Dinamico',
+  electret: 'Electret',
+  unknown: 'Tipo desconocido',
+};
+
+const MIC_CONNECTION_LABELS: Record<string, string> = {
+  usb: 'USB',
+  xlr: 'XLR',
+  analog: 'Analogico',
+  wireless: 'Inalambrico',
+  unknown: 'Conexion desconocida',
+};
+
 export function AudioConfiguration() {
   const {
     obsConnected,
     obsAudioSnapshot,
     obsSettingsSnapshot,
     isApplying,
+    mode,
+    micProfile,
+    isProfilingMic,
     setError,
     setObsMessage,
+    setMicProfile,
   } = useAppStore();
-  const { refreshAudioSnapshot, applyAudioConfig } = useElectronAPI();
+  const { refreshAudioSnapshot, applyAudioConfig, profileMicrophone } = useElectronAPI();
+  const [useAiRecommendation, setUseAiRecommendation] = useState(false);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [localDeviceStatus, setLocalDeviceStatus] = useState('Permiso de microfono local no solicitado');
   const [detectionMessage, setDetectionMessage] = useState('');
@@ -97,6 +158,20 @@ export function AudioConfiguration() {
     }
   };
 
+  const handleAnalyzeMic = async () => {
+    if (!obsAudioSnapshot) return;
+    setError(null);
+    const deviceName = selectedDevice?.name ?? obsAudioSnapshot.selectedDeviceName ?? obsAudioSnapshot.inputName;
+    const profile = await profileMicrophone({
+      deviceName,
+      inputKind: obsAudioSnapshot.inputKind,
+      mode: mode ?? 'record_only',
+    });
+    if (profile) {
+      setUseAiRecommendation(true);
+    }
+  };
+
   const handleLocalDeviceScan = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
       setLocalDeviceStatus('La deteccion local de microfono no esta disponible en este entorno');
@@ -114,15 +189,18 @@ export function AudioConfiguration() {
     }
   };
 
+  const usingAi = useAiRecommendation && micProfile !== null;
+
   const handleApply = async () => {
     if (!obsAudioSnapshot) return;
 
+    const filters = usingAi && micProfile
+      ? filtersFromProfile(micProfile)
+      : { ...defaultFilters, noiseSuppression };
+
     const config: OBSAudioConfig = {
       ...createDefaultAudioConfig(obsAudioSnapshot.inputName, selectedDevice),
-      filters: {
-        ...defaultFilters,
-        noiseSuppression,
-      },
+      filters,
       monitorType,
       syncOffsetMs,
       ducking: selectedDuckingTarget
@@ -187,6 +265,15 @@ export function AudioConfiguration() {
       subtitle="Objetivo: que tu voz se escuche clara, fuerte y sin ruido de fondo al grabar o transmitir."
       action={
         <>
+          <button
+            type="button"
+            onClick={handleAnalyzeMic}
+            disabled={isProfilingMic}
+            className={`${secondaryButtonClasses} ${isProfilingMic ? 'cursor-not-allowed opacity-60' : 'hover:border-primary/60'}`}
+          >
+            {isProfilingMic ? <Spinner className="h-3.5 w-3.5 border-text/60 border-t-transparent" /> : <IconSparkles className="h-3.5 w-3.5" />}
+            {isProfilingMic ? 'Analizando...' : 'Analizar microfono con IA'}
+          </button>
           <button type="button" onClick={handleLocalDeviceScan} className={secondaryButtonClasses}>
             <IconMic className="h-3.5 w-3.5" />
             Buscar micro local
@@ -198,6 +285,14 @@ export function AudioConfiguration() {
         </>
       }
     >
+      {micProfile && (
+        <MicProfileCard
+          profile={micProfile}
+          active={useAiRecommendation}
+          onToggle={setUseAiRecommendation}
+          onDismiss={() => { setMicProfile(null); setUseAiRecommendation(false); }}
+        />
+      )}
       <div className="mb-4 grid gap-4 md:grid-cols-[1.4fr_1fr]">
         <label className="block rounded-none border border-border bg-white/[0.02] p-4 transition-colors focus-within:border-primary/50">
           <span className="mb-2 block text-xs uppercase tracking-wider text-text-muted">Microfono recomendado</span>
@@ -223,13 +318,13 @@ export function AudioConfiguration() {
 
         <div className="rounded-none border border-border bg-white/[0.02] p-4">
           <span className="mb-2 block text-xs uppercase tracking-wider text-text-muted">Filtros</span>
-          <span className={filtersReady ? 'text-base font-semibold text-primary' : 'text-base font-semibold text-amber-400'}>
-            {filtersReady ? 'Listos' : 'Se aplicaran'}
+          <span className={usingAi ? 'text-base font-semibold text-primary' : filtersReady ? 'text-base font-semibold text-primary' : 'text-base font-semibold text-amber-400'}>
+            {usingAi ? 'A medida (IA)' : filtersReady ? 'Listos' : 'Se aplicaran'}
           </span>
         </div>
       </div>
 
-      <div className="mb-4 grid gap-3 text-sm md:grid-cols-3">
+      <div className={`mb-4 grid gap-3 text-sm md:grid-cols-3 ${usingAi ? 'hidden' : ''}`}>
         <div className="rounded-none border border-border bg-white/[0.02] px-4 py-3">
           <span className="block font-semibold text-text">Ganancia +10 dB</span>
           <span className="mt-1 block text-xs leading-relaxed text-text-muted">
@@ -409,7 +504,18 @@ export function AudioConfiguration() {
             ? 'Se activara Mono para esta entrada.'
             : 'OBS WebSocket no expone Mono para esta entrada, asi que obsee lo dejara como paso manual en OBS.'}
         </p>
-        <p>obsee aplicara ganancia de +10 dB, compresor 4:1 a -10 dB y limitador a -1 dB.</p>
+        {usingAi && micProfile ? (
+          <>
+            <p>obsee aplicara la cadena de voz recomendada por la IA para "{micProfile.profile.model}":</p>
+            <ul className="list-disc space-y-1 pl-5">
+              {aiFilterSummary(micProfile).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p>obsee aplicara ganancia de +10 dB, compresor 4:1 a -10 dB y limitador a -1 dB.</p>
+        )}
         <ul className="list-disc space-y-1 pl-5">
           {stageTwoActions.map((action) => (
             <li key={action}>{action}</li>
@@ -417,5 +523,78 @@ export function AudioConfiguration() {
         </ul>
       </ConfirmDialog>
     </Section>
+  );
+}
+
+interface MicProfileCardProps {
+  profile: MicProfileResponse;
+  active: boolean;
+  onToggle: (value: boolean) => void;
+  onDismiss: () => void;
+}
+
+function MicProfileCard({ profile, active, onToggle, onDismiss }: MicProfileCardProps) {
+  const { profile: p, filters: f } = profile;
+  const rows = [
+    { key: 'noise', label: 'Supresion de ruido', enabled: f.noiseSuppression.enabled, detail: `metodo ${f.noiseSuppression.method}`, reason: f.noiseSuppression.reason },
+    { key: 'gate', label: 'Compuerta de ruido', enabled: f.noiseGate.enabled, detail: `abre ${f.noiseGate.openThresholdDb} dB / cierra ${f.noiseGate.closeThresholdDb} dB`, reason: f.noiseGate.reason },
+    { key: 'gain', label: 'Ganancia', enabled: f.gain.enabled, detail: `${f.gain.db > 0 ? '+' : ''}${f.gain.db} dB`, reason: f.gain.reason },
+    { key: 'comp', label: 'Compresor', enabled: f.compressor.enabled, detail: `${f.compressor.ratio}:1 a ${f.compressor.thresholdDb} dB`, reason: f.compressor.reason },
+    { key: 'lim', label: 'Limitador', enabled: f.limiter.enabled, detail: `${f.limiter.thresholdDb} dB`, reason: f.limiter.reason },
+  ];
+
+  return (
+    <div className="mb-4 rounded-none border border-primary/40 bg-primary/[0.04] p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <IconSparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div>
+            <p className="text-sm font-semibold text-text">
+              {p.identified ? p.model : 'Microfono no identificado'}
+              {profile.source === 'local' && <span className="ml-2 text-xs font-normal text-text-faint">(perfil local sin conexion)</span>}
+            </p>
+            <p className="mt-0.5 text-xs text-text-muted">
+              {MIC_TYPE_LABELS[p.type]} · {MIC_CONNECTION_LABELS[p.connection]}{p.hasBuiltinDsp ? ' · DSP integrado' : ''}
+            </p>
+            {p.summary && <p className="mt-1 text-xs leading-relaxed text-text-muted">{p.summary}</p>}
+          </div>
+        </div>
+        <button type="button" onClick={onDismiss} className="text-text-faint transition-colors hover:text-text" aria-label="Descartar analisis">
+          <IconX className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.key} className={`rounded-none border px-3 py-2 ${row.enabled ? 'border-border bg-white/[0.02]' : 'border-border/60 bg-transparent opacity-70'}`}>
+            <div className="flex items-center gap-2">
+              {row.enabled ? <IconCheck className="h-3.5 w-3.5 text-primary" /> : <IconX className="h-3.5 w-3.5 text-text-faint" />}
+              <span className="text-sm font-semibold text-text">{row.label}</span>
+              <span className="ml-auto text-xs text-text-muted">{row.enabled ? row.detail : 'omitir'}</span>
+            </div>
+            {row.reason && <p className="mt-1 text-xs leading-relaxed text-text-faint">{row.reason}</p>}
+          </div>
+        ))}
+      </div>
+
+      {p.sources && p.sources.length > 0 && (
+        <p className="mt-3 text-xs text-text-faint">
+          Segun fabricante:{' '}
+          {p.sources.map((url, index) => (
+            <React.Fragment key={url}>
+              {index > 0 && ' · '}
+              <a href={url} target="_blank" rel="noreferrer" className="text-primary/80 underline hover:text-primary">{safeHostname(url)}</a>
+            </React.Fragment>
+          ))}
+        </p>
+      )}
+
+      {profile.reasoning && <p className="mt-3 text-xs leading-relaxed text-text-muted">{profile.reasoning}</p>}
+
+      <label className="mt-3 flex items-center gap-2 border-t border-border/60 pt-3">
+        <input type="checkbox" checked={active} onChange={(event) => onToggle(event.target.checked)} />
+        <span className="text-sm font-medium text-text">Usar esta recomendacion de la IA al aplicar</span>
+      </label>
+    </div>
   );
 }

@@ -7,6 +7,8 @@ import {
   validateApplyGuidedSourceDevice,
   validateBeginGuidedSource,
   validateCreateGuidedSourceConfig,
+  validateMicProfileRequest,
+  validateMicProfileResponse,
   validateOBSBackup,
   validateOBSAudioConfig,
   validateOBSConfig,
@@ -173,10 +175,15 @@ describe('validateOBSConfig', () => {
           mono: true,
           filters: {
             gainDb: 10.3,
+            gainEnabled: true,
             compressorRatio: 4,
             compressorThresholdDb: -10,
+            compressorEnabled: true,
             limiterThresholdDb: -1,
+            limiterEnabled: true,
             noiseSuppression: true,
+            noiseSuppressionMethod: 'rnnoise',
+            noiseGate: undefined,
           },
           monitorType: 'OBS_MONITORING_TYPE_NONE',
           syncOffsetMs: -950,
@@ -492,5 +499,103 @@ describe('validateCreateGuidedSourceConfig', () => {
       validateCreateGuidedSourceConfig({ sceneName: 'Escena 1', friendly: 'camera', sourceName: 'Cam', fitToCanvas: 'yes' })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('validateOBSAudioConfig campos de filtros nuevos', () => {
+  it('aplica defaults a los flags de filtros y metodo de ruido', () => {
+    const result = validateOBSAudioConfig(validAudioConfig);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.value.filters.gainEnabled).toBe(true);
+    expect(result.value.filters.compressorEnabled).toBe(true);
+    expect(result.value.filters.limiterEnabled).toBe(true);
+    expect(result.value.filters.noiseSuppressionMethod).toBe('rnnoise');
+    expect(result.value.filters.noiseGate).toBeUndefined();
+  });
+
+  it('acepta la compuerta de ruido y respeta los flags', () => {
+    const result = validateOBSAudioConfig({
+      ...validAudioConfig,
+      filters: {
+        ...validAudioConfig.filters,
+        gainEnabled: false,
+        noiseSuppressionMethod: 'speex',
+        noiseGate: { enabled: true, closeThresholdDb: -45, openThresholdDb: -35 },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.value.filters.gainEnabled).toBe(false);
+    expect(result.value.filters.noiseSuppressionMethod).toBe('speex');
+    expect(result.value.filters.noiseGate).toEqual({ enabled: true, closeThresholdDb: -45, openThresholdDb: -35 });
+  });
+
+  it('rechaza umbrales de compuerta fuera de rango', () => {
+    const result = validateOBSAudioConfig({
+      ...validAudioConfig,
+      filters: { ...validAudioConfig.filters, noiseGate: { enabled: true, closeThresholdDb: -200, openThresholdDb: -35 } },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('validateMicProfileRequest', () => {
+  it('acepta una solicitud valida', () => {
+    const result = validateMicProfileRequest({ deviceName: ' Blue Yeti ', mode: 'record_only', inputKind: 'coreaudio_input_capture' });
+    expect(result).toEqual({ success: true, value: { deviceName: 'Blue Yeti', mode: 'record_only', inputKind: 'coreaudio_input_capture', os: undefined } });
+  });
+
+  it('rechaza nombre vacio o modo invalido', () => {
+    expect(validateMicProfileRequest({ deviceName: '', mode: 'record_only' }).success).toBe(false);
+    expect(validateMicProfileRequest({ deviceName: 'Mic', mode: 'invalid' }).success).toBe(false);
+  });
+});
+
+describe('validateMicProfileResponse', () => {
+  const validResponse = {
+    source: 'ai',
+    profile: { identified: true, model: 'Blue Yeti', type: 'condenser', connection: 'usb', hasBuiltinDsp: false, summary: 'Condensador USB', sources: ['https://www.bluemic.com/yeti'] },
+    filters: {
+      noiseSuppression: { enabled: true, method: 'rnnoise', reason: 'ruido' },
+      noiseGate: { enabled: true, closeThresholdDb: -45, openThresholdDb: -35, reason: 'gate' },
+      gain: { enabled: true, db: 6, reason: 'gain' },
+      compressor: { enabled: true, ratio: 3, thresholdDb: -18, reason: 'comp' },
+      limiter: { enabled: true, thresholdDb: -1.5, reason: 'lim' },
+    },
+    reasoning: 'resumen',
+  };
+
+  it('acepta una respuesta valida', () => {
+    const result = validateMicProfileResponse(validResponse);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.value.profile.model).toBe('Blue Yeti');
+    expect(result.value.filters.gain.db).toBe(6);
+  });
+
+  it('clampa numeros fuera de rango y cae a enums por defecto', () => {
+    const result = validateMicProfileResponse({
+      ...validResponse,
+      profile: { ...validResponse.profile, type: 'laser', connection: 'bluetooth' },
+      filters: {
+        ...validResponse.filters,
+        gain: { enabled: true, db: 999, reason: '' },
+        compressor: { enabled: true, ratio: 0.1, thresholdDb: 50, reason: '' },
+        noiseSuppression: { enabled: true, method: 'magic', reason: '' },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.value.profile.type).toBe('unknown');
+    expect(result.value.profile.connection).toBe('unknown');
+    expect(result.value.filters.gain.db).toBe(30);
+    expect(result.value.filters.compressor.ratio).toBe(1);
+    expect(result.value.filters.compressor.thresholdDb).toBe(0);
+    expect(result.value.filters.noiseSuppression.method).toBe('rnnoise');
+  });
+
+  it('rechaza una respuesta sin perfil o filtros', () => {
+    expect(validateMicProfileResponse({ source: 'ai', reasoning: 'x' }).success).toBe(false);
   });
 });

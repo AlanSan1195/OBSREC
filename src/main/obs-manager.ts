@@ -23,6 +23,7 @@ import {
   collectDuckingInputCandidates,
   getBooleanValue,
   getDuckingFilter,
+  MANAGED_MIC_FILTER_NAMES,
   getFilterSettings,
   getNumberSetting,
   getOptionalString,
@@ -381,7 +382,7 @@ export class OBSManager {
         }
       }
 
-      await this.ensureAudioFilters(config.inputName, getFilterSettings(config), warnings);
+      await this.ensureAudioFilters(config.inputName, getFilterSettings(config), warnings, MANAGED_MIC_FILTER_NAMES);
       await this.configureDucking(config, warnings);
       const snapshot = await this.getAudioSnapshot();
       const message = warnings.length > 0
@@ -737,8 +738,24 @@ export class OBSManager {
     sourceName: string,
     expectedFilters: Record<string, { kind: string; settings: OBSJsonSettings }>,
     warnings: string[],
+    // Nombres de filtros gestionados por obsee que deben eliminarse si ya no
+    // estan en el set esperado (honra "omitir"). Acotado para no tocar filtros
+    // del usuario ni el ducking.
+    removableManagedNames: string[] = [],
   ): Promise<void> {
     const existingFilters = await this.getAudioFilters(sourceName);
+
+    for (const managedName of removableManagedNames) {
+      if (expectedFilters[managedName]) continue;
+      const stale = existingFilters.find((filter) => filter.name === managedName);
+      if (!stale) continue;
+      try {
+        await this.obs.call('RemoveSourceFilter', { sourceName, filterName: managedName });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        warnings.push(`${managedName} (omitir): ${errorMessage}`);
+      }
+    }
 
     for (const [filterName, filterConfig] of Object.entries(expectedFilters)) {
       const existingFilter = existingFilters.find((filter) => filter.name === filterName);

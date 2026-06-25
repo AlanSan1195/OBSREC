@@ -137,6 +137,49 @@ describe('getFilterSettings', () => {
 
     expect(filters[obsrecFilterNames.noise]).toBeUndefined();
   });
+
+  it('respeta el metodo de supresion de ruido indicado', () => {
+    const filters = getFilterSettings({
+      ...baseConfig,
+      filters: { ...baseConfig.filters, noiseSuppressionMethod: 'speex' },
+    });
+
+    expect(filters[obsrecFilterNames.noise]).toEqual({
+      kind: 'noise_suppress_filter',
+      settings: { method: 'speex' },
+    });
+  });
+
+  it('incluye la compuerta de ruido cuando esta activada', () => {
+    const filters = getFilterSettings({
+      ...baseConfig,
+      filters: {
+        ...baseConfig.filters,
+        noiseGate: { enabled: true, openThresholdDb: -35, closeThresholdDb: -45 },
+      },
+    });
+
+    const gate = filters[obsrecFilterNames.noiseGate];
+    expect(gate?.kind).toBe('noise_gate_filter');
+    expect(gate?.settings.open_threshold).toBe(-35);
+    expect(gate?.settings.close_threshold).toBe(-45);
+  });
+
+  it('omite gain, compresor y limitador cuando se marcan como deshabilitados', () => {
+    const filters = getFilterSettings({
+      ...baseConfig,
+      filters: {
+        ...baseConfig.filters,
+        gainEnabled: false,
+        compressorEnabled: false,
+        limiterEnabled: false,
+      },
+    });
+
+    expect(filters[obsrecFilterNames.gain]).toBeUndefined();
+    expect(filters[obsrecFilterNames.compressor]).toBeUndefined();
+    expect(filters[obsrecFilterNames.limiter]).toBeUndefined();
+  });
 });
 
 describe('collectDuckingInputCandidates', () => {

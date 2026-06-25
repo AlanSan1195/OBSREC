@@ -1,5 +1,5 @@
-import type { AIRecommendation, AIRecommendationExplanation, AIRecommendationExplanationRequest, AIRecommendationRequest } from '../../shared/types';
-import { validateAIRecommendation, validateAIRecommendationExplanation } from '../../shared/validation';
+import type { AIRecommendation, AIRecommendationExplanation, AIRecommendationExplanationRequest, AIRecommendationRequest, MicProfileRequest, MicProfileResponse } from '../../shared/types';
+import { validateAIRecommendation, validateAIRecommendationExplanation, validateMicProfileResponse } from '../../shared/validation';
 import { getInstallId } from '../install-id';
 
 const defaultApiUrl = 'https://obsee.vercel.app';
@@ -71,6 +71,20 @@ export async function getRemoteRecommendationExplanation(
   }
 
   return validation.value;
+}
+
+export async function getRemoteMicProfile(request: MicProfileRequest): Promise<MicProfileResponse> {
+  const payload = await postToRemoteAI('/api/audio-profile', request);
+  const validation = validateMicProfileResponse(payload);
+
+  if (!validation.success) {
+    throw new RemoteAIError(validation.message);
+  }
+
+  return {
+    ...validation.value,
+    source: 'ai',
+  };
 }
 
 export function getRemoteAIUserMessage(error: unknown): string {

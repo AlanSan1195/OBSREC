@@ -1,6 +1,6 @@
 import { useAppStore } from '../store';
 import { inferObsUsage } from '../../shared/obsUsage';
-import type { AIRecommendation, AIRecommendationExplanation, AIRecommendationExplanationRequest, AIRecommendationRequest, ApplyGuidedSourceDeviceInput, BeginGuidedSourceInput, BeginGuidedSourceResult, CameraLayout, CreateGuidedSourceConfig, OBSBackup, OBSAudioConfig, OBSAudioSettingsSnapshot, OBSConfig, OBSConnectionSettings, OBSSettingsSnapshot, ResolvedSourceKind, SceneSourcesSnapshot, ScenesSnapshot, SetCameraLayoutInput, SystemInfo } from '../../shared/types';
+import type { AIRecommendation, AIRecommendationExplanation, AIRecommendationExplanationRequest, AIRecommendationRequest, ApplyGuidedSourceDeviceInput, BeginGuidedSourceInput, BeginGuidedSourceResult, CameraLayout, CreateGuidedSourceConfig, MicProfileRequest, MicProfileResponse, OBSBackup, OBSAudioConfig, OBSAudioSettingsSnapshot, OBSConfig, OBSConnectionSettings, OBSSettingsSnapshot, ResolvedSourceKind, SceneSourcesSnapshot, ScenesSnapshot, SetCameraLayoutInput, SystemInfo } from '../../shared/types';
 
 function getElectronAPI() {
   if (!window.electronAPI) {
@@ -24,6 +24,8 @@ export function useElectronAPI() {
   const setSelectedSceneName = useAppStore((state) => state.setSelectedSceneName);
   const setSceneSources = useAppStore((state) => state.setSceneSources);
   const setAvailableSourceKinds = useAppStore((state) => state.setAvailableSourceKinds);
+  const setMicProfile = useAppStore((state) => state.setMicProfile);
+  const setIsProfilingMic = useAppStore((state) => state.setIsProfilingMic);
 
   const getSystemInfo = async () => {
     try {
@@ -53,6 +55,21 @@ export function useElectronAPI() {
     } catch (error) {
       setError(error instanceof Error ? error.message : 'No se pudo actualizar la explicacion de IA');
       throw error;
+    }
+  };
+
+  const profileMicrophone = async (request: MicProfileRequest): Promise<MicProfileResponse | null> => {
+    setIsProfilingMic(true);
+    setError(null);
+    try {
+      const profile = await getElectronAPI().ai.profileMicrophone(request);
+      setMicProfile(profile);
+      return profile;
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'No se pudo analizar el microfono con IA');
+      return null;
+    } finally {
+      setIsProfilingMic(false);
     }
   };
 
@@ -345,6 +362,7 @@ export function useElectronAPI() {
     setSourceEnabled,
     getSourceScreenshot,
     pickImageFile,
+    profileMicrophone,
   };
 }
 
@@ -387,6 +405,7 @@ declare global {
       ai: {
         getRecommendation: (request: AIRecommendationRequest) => Promise<AIRecommendation>;
         explainRecommendation: (request: AIRecommendationExplanationRequest) => Promise<AIRecommendationExplanation>;
+        profileMicrophone: (request: MicProfileRequest) => Promise<MicProfileResponse>;
       };
     };
   }

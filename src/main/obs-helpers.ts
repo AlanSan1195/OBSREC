@@ -10,11 +10,23 @@ export const defaultAudioConfig = {
 
 export const obsrecFilterNames = {
   noise: 'obsee - Noise Suppression',
+  noiseGate: 'obsee - Noise Gate',
   gain: 'obsee - Gain',
   compressor: 'obsee - Compressor',
   limiter: 'obsee - Limiter',
   ducking: 'obsee - Ducking',
 };
+
+// Cadena de voz que obsee gestiona en el microfono. Excluye 'ducking', que vive
+// en el audio de escritorio. Se usa para poder ELIMINAR filtros omitidos sin
+// tocar filtros propios del usuario.
+export const MANAGED_MIC_FILTER_NAMES = [
+  obsrecFilterNames.noise,
+  obsrecFilterNames.noiseGate,
+  obsrecFilterNames.gain,
+  obsrecFilterNames.compressor,
+  obsrecFilterNames.limiter,
+];
 
 export type OBSJsonSettings = Record<string, string | number | boolean>;
 export type OBSAudioFilterDefinition = {
@@ -219,39 +231,60 @@ export function isSameFilterValue(current: unknown, expected: number | string | 
 
 export function getFilterSettings(config: OBSAudioConfig): Record<string, OBSAudioFilterDefinition> {
   const filters: Record<string, OBSAudioFilterDefinition> = {};
+  const f = config.filters;
 
-  if (config.filters.noiseSuppression) {
+  if (f.noiseSuppression) {
     filters[obsrecFilterNames.noise] = {
       kind: 'noise_suppress_filter',
-      settings: { method: 'rnnoise' },
+      settings: { method: f.noiseSuppressionMethod ?? 'rnnoise' },
     };
   }
 
-  return {
-    ...filters,
-    [obsrecFilterNames.gain]: {
+  if (f.noiseGate?.enabled) {
+    filters[obsrecFilterNames.noiseGate] = {
+      kind: 'noise_gate_filter',
+      settings: {
+        open_threshold: f.noiseGate.openThresholdDb,
+        close_threshold: f.noiseGate.closeThresholdDb,
+        attack_time: 25,
+        hold_time: 200,
+        release_time: 150,
+      },
+    };
+  }
+
+  if (f.gainEnabled !== false) {
+    filters[obsrecFilterNames.gain] = {
       kind: 'gain_filter',
-      settings: { db: config.filters.gainDb },
-    },
-    [obsrecFilterNames.compressor]: {
+      settings: { db: f.gainDb },
+    };
+  }
+
+  if (f.compressorEnabled !== false) {
+    filters[obsrecFilterNames.compressor] = {
       kind: 'compressor_filter',
       settings: {
-        ratio: config.filters.compressorRatio,
-        threshold: config.filters.compressorThresholdDb,
+        ratio: f.compressorRatio,
+        threshold: f.compressorThresholdDb,
         attack_time: 6,
         release_time: 60,
         output_gain: 0,
         sidechain_source: 'none',
       },
-    },
-    [obsrecFilterNames.limiter]: {
+    };
+  }
+
+  if (f.limiterEnabled !== false) {
+    filters[obsrecFilterNames.limiter] = {
       kind: 'limiter_filter',
       settings: {
-        threshold: config.filters.limiterThresholdDb,
+        threshold: f.limiterThresholdDb,
         release_time: 60,
       },
-    },
-  };
+    };
+  }
+
+  return filters;
 }
 
 export function getDuckingFilter(micInputName: string): Record<string, OBSAudioFilterDefinition> {
