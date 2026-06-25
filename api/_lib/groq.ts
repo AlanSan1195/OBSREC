@@ -41,6 +41,65 @@ export function parseJsonObject(value: string): unknown {
   return JSON.parse(match[0]);
 }
 
+async function searchWeb(query: string): Promise<{ results: string[]; sources: string[] }> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) {
+    console.warn('[tavily] TAVILY_API_KEY not configured, skipping web search');
+    return { results: [], sources: [] };
+  }
+
+  // Dominios confiables: oficiales, manuales, retailers conocidos
+  const trustedDomains = [
+    // Oficiales y manuales
+    'support.', 'manual.', 'manuals.', 'specs.', 'specifications.',
+    'ugreen.', 'elgato.', 'avermedia.', 'razer.', 'cam-link.',
+    // Retailers grandes
+    'amazon.', 'mercadolibre.', 'aliexpress.', 'newegg.', 'bhphotovideo.',
+    'adorama.', 'b&h.', 'sweetwater.', 'bestbuy.', 'walmart.',
+    // Profesionales de specs/reviews
+    'rtings.', 'techpowerup.', 'anandtech.', 'overclock.net',
+  ];
+
+  const isUrlTrusted = (url: string): boolean => {
+    const domain = new URL(url).hostname.toLowerCase();
+    return trustedDomains.some((trusted) => domain.includes(trusted));
+  };
+
+  try {
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        max_results: 8, // Buscar más para filtrar después
+        include_answer: false,
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn(`[tavily] API error: ${response.status}`, await response.text());
+      return { results: [], sources: [] };
+    }
+
+    const data = await response.json() as { results?: Array<{ content: string; url: string }> };
+    const allResults = data.results ?? [];
+
+    // Filtrar solo fuentes confiables
+    const trusted = allResults.filter((r) => isUrlTrusted(r.url));
+    const results = trusted.map((r) => r.content);
+    const sources = trusted.map((r) => r.url);
+
+    console.log(`[tavily] Busqueda: "${query}"`);
+    console.log(`[tavily] Encontrados: ${allResults.length} totales, ${sources.length} confiables`);
+
+    return { results, sources };
+  } catch (error) {
+    console.warn('[tavily] Web search failed:', error instanceof Error ? error.message : error);
+    return { results: [], sources: [] };
+  }
+}
+
 export async function getRecommendationFromGroq(request: AIRecommendationRequest): Promise<unknown> {
   const { systemInfo, mode, platform, currentSettings } = request;
   const baselineSection = currentSettings
@@ -122,15 +181,25 @@ function buildMicContext(request: MicProfileRequest): string {
   return `Microfono detectado: "${request.deviceName}". Contexto: sistema operativo ${request.os ?? 'desconocido'}, tipo de entrada OBS "${request.inputKind ?? 'desconocido'}", uso "${request.mode}".`;
 }
 
-// Hibrido: si GROQ_SEARCH_MODEL esta configurado (ej. 'groq/compound' en un tier
-// que lo permita), intenta busqueda web real; si falla (en el tier gratuito de
-// Groq excede el limite por peticion: "request_too_large") cae al conocimiento
-// del modelo (gpt-oss). Por defecto, sin esa env var, va directo a gpt-oss para
-// no pagar ~7s de espera inutil en cada analisis.
+// Hibrido: intenta busqueda web via Tavily si TAVILY_API_KEY esta configurada.
+// Si no, usa GROQ_SEARCH_MODEL ('groq/compound') si existe.
+// Fallback: conocimiento del modelo (gpt-oss).
 export async function getMicProfileFromGroq(request: MicProfileRequest): Promise<unknown> {
-  const searchModel = process.env.GROQ_SEARCH_MODEL;
+  let webContext = '';
+  let webSources: string[] = [];
 
-  if (searchModel) {
+  // Intento 1: Tavily (sin tier especial, funciona en tier gratuito)
+  if (process.env.TAVILY_API_KEY) {
+    const { results, sources } = await searchWeb(`${request.deviceName} microphone specifications`);
+    if (results.length > 0) {
+      webContext = `\nInformacion navegada (Tavily):\n${results.join('\n')}`;
+      webSources = sources;
+      console.log('[mic-profile] Web search via Tavily: exitoso');
+    }
+  }
+
+  // Intento 2: GROQ_SEARCH_MODEL como fallback
+  if (!webContext && process.env.GROQ_SEARCH_MODEL) {
     try {
       const webPrompt = `Eres un ingeniero de audio experto en OBS. Busca en la web las especificaciones OFICIALES del microfono indicado.
 ${buildMicContext(request)}
@@ -142,13 +211,12 @@ ${MIC_PROFILE_RULES}
 
 ${MIC_PROFILE_JSON_SHAPE}`;
 
-      // Sin max_tokens: groq/compound lo rechaza ("request_too_large").
       const response = await chat(
         [
           { role: 'system', content: 'Eres un ingeniero de audio experto en OBS. Usas busqueda web para confirmar specs y respondes solo en JSON valido.' },
           { role: 'user', content: webPrompt },
         ],
-        { model: searchModel, temperature: 0.3, maxTokens: null },
+        { model: process.env.GROQ_SEARCH_MODEL, temperature: 0.3, maxTokens: null },
       );
       return parseJsonObject(response);
     } catch (error) {
@@ -163,7 +231,7 @@ ${buildMicContext(request)}
 Identifica tipo (condensador/dinamico/electret), conexion (USB/XLR/analogica) y si tiene DSP/cancelacion de ruido integrada, y decide que filtros aplicar, ajustar u OMITIR para una voz clara y profesional.
 
 ${MIC_PROFILE_RULES}
-- No inventes URLs: deja "sources" como [].
+${webContext ? `- Usa esta informacion navegada para confirmar specs:\n${webContext}` : '- No inventes URLs: deja "sources" como [].'}
 
 ${MIC_PROFILE_JSON_SHAPE}`;
 
@@ -175,7 +243,12 @@ ${MIC_PROFILE_JSON_SHAPE}`;
     { model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b', temperature: 0.3, maxTokens: 2000 },
   );
 
-  return parseJsonObject(response);
+  const result = parseJsonObject(response) as any;
+  // Si navegamos via Tavily, agregar las sources encontradas
+  if (webSources.length > 0 && result.profile) {
+    result.profile.sources = [...(result.profile.sources ?? []), ...webSources].slice(0, 3);
+  }
+  return result;
 }
 
 const CONSOLE_LABELS: Record<string, string> = {
@@ -232,12 +305,35 @@ PC que corre OBS: CPU ${c.model} (${c.cores} nucleos), GPU ${g.model} (vendor ${
 Uso: ${request.mode} en ${request.platform}.${realCaps}`;
 }
 
-// Hibrido (mismo criterio que el perfil de microfono): web opcional via
-// GROQ_SEARCH_MODEL, por defecto conocimiento del modelo (gpt-oss).
+// Hibrido: intenta busqueda web via Tavily si TAVILY_API_KEY esta configurada.
+// Si no, usa GROQ_SEARCH_MODEL ('groq/compound') si existe.
+// Fallback: conocimiento del modelo (gpt-oss).
 export async function getConsoleProfileFromGroq(request: ConsoleProfileRequest): Promise<unknown> {
-  const searchModel = process.env.GROQ_SEARCH_MODEL;
+  let webContext = '';
+  let webSources: string[] = [];
 
-  if (searchModel) {
+  // Intento 1: Tavily (sin tier especial, funciona en tier gratuito)
+  if (process.env.TAVILY_API_KEY) {
+    const searchQueries = [
+      `${CONSOLE_LABELS[request.console] ?? request.console} specifications`,
+      `${request.captureCard} capture card specifications`,
+    ];
+
+    for (const query of searchQueries) {
+      const { results, sources } = await searchWeb(query);
+      if (results.length > 0) {
+        webContext += `\n${query}:\n${results.join('\n')}\n`;
+        webSources = [...webSources, ...sources];
+      }
+    }
+
+    if (webContext) {
+      console.log('[console-profile] Web search via Tavily: exitoso');
+    }
+  }
+
+  // Intento 2: GROQ_SEARCH_MODEL como fallback
+  if (!webContext && process.env.GROQ_SEARCH_MODEL) {
     try {
       const webPrompt = `Eres un experto en streaming de consolas con OBS. Busca en la web las especificaciones OFICIALES de la consola, la capturadora y el monitor indicados, y haz "match" de la cadena consola -> capturadora -> monitor.
 ${buildConsoleContext(request)}
@@ -252,7 +348,7 @@ ${CONSOLE_PROFILE_JSON_SHAPE}`;
           { role: 'system', content: 'Eres un experto en streaming de consolas con OBS. Usas busqueda web para confirmar specs y respondes solo en JSON valido.' },
           { role: 'user', content: webPrompt },
         ],
-        { model: searchModel, temperature: 0.3, maxTokens: null },
+        { model: process.env.GROQ_SEARCH_MODEL, temperature: 0.3, maxTokens: null },
       );
       return parseJsonObject(response);
     } catch (error) {
@@ -264,7 +360,7 @@ ${CONSOLE_PROFILE_JSON_SHAPE}`;
 ${buildConsoleContext(request)}
 
 ${CONSOLE_PROFILE_RULES}
-- No inventes URLs: deja "sources" como [].
+${webContext ? `- Usa esta informacion navegada para confirmar specs:\n${webContext}` : '- No inventes URLs: deja "sources" como [].'}
 
 ${CONSOLE_PROFILE_JSON_SHAPE}`;
 
@@ -276,7 +372,12 @@ ${CONSOLE_PROFILE_JSON_SHAPE}`;
     { model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b', temperature: 0.3, maxTokens: 2500 },
   );
 
-  return parseJsonObject(response);
+  const result = parseJsonObject(response) as any;
+  // Si navegamos via Tavily, agregar las sources encontradas
+  if (webSources.length > 0 && result.profile) {
+    result.profile.sources = [...(result.profile.sources ?? []), ...webSources].slice(0, 3);
+  }
+  return result;
 }
 
 export async function getExplanationFromGroq(request: AIRecommendationExplanationRequest): Promise<unknown> {

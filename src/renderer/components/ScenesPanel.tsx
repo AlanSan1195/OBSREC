@@ -72,25 +72,22 @@ export function ScenesPanel() {
             </div>
             <div>
               <h4 className="mb-2 text-xs lowercase tracking-terminal text-text-faint">fuentes</h4>
-              <SourceList
-                sceneName={scenes.length > 0 ? selectedSceneName : null}
-                onAddSource={() => setWizardOpen(true)}
-              />
+              {wizardOpen && selectedSceneName ? (
+                <AddSourceWizard
+                  sceneName={selectedSceneName}
+                  onClose={() => setWizardOpen(false)}
+                  onCreated={() => {
+                    void loadSceneSources(selectedSceneName);
+                  }}
+                />
+              ) : (
+                <SourceList
+                  sceneName={scenes.length > 0 ? selectedSceneName : null}
+                  onAddSource={() => setWizardOpen(true)}
+                />
+              )}
             </div>
           </div>
-
-          {selectedSceneName && (
-            <AddSourceWizard
-              open={wizardOpen}
-              sceneName={selectedSceneName}
-              onClose={() => setWizardOpen(false)}
-              onCreated={() => {
-                if (selectedSceneName) {
-                  void loadSceneSources(selectedSceneName);
-                }
-              }}
-            />
-          )}
         </>
       )}
     </Section>

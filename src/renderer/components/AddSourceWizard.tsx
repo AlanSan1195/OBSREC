@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../store';
 import { useElectronAPI } from '../hooks/useElectronAPI';
 import type { DeviceOption, ResolvedSourceKind, SourceKindFriendly } from '../../shared/types';
@@ -6,7 +6,6 @@ import { IconClapperboard, IconMonitor, IconTv, IconVideo, Spinner } from './ui'
 import { SourcePreview } from './SourcePreview';
 
 type AddSourceWizardProps = {
-  open: boolean;
   sceneName: string;
   onClose: () => void;
   onCreated: () => void;
@@ -34,8 +33,7 @@ const primaryButton =
 const secondaryButton =
   'inline-flex items-center justify-center gap-1.5 rounded-none border border-border px-4 py-2.5 text-sm font-semibold text-text transition-colors hover:border-primary/40 hover:bg-white/[0.04]';
 
-export function AddSourceWizard({ open, sceneName, onClose, onCreated }: AddSourceWizardProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+export function AddSourceWizard({ sceneName, onClose, onCreated }: AddSourceWizardProps) {
   const availableSourceKinds = useAppStore((state) => state.availableSourceKinds);
   const {
     beginGuidedSource,
@@ -63,30 +61,6 @@ export function AddSourceWizard({ open, sceneName, onClose, onCreated }: AddSour
   const kindByFriendly = (value: SourceKindFriendly): ResolvedSourceKind | undefined =>
     availableSourceKinds?.find((kind) => kind.friendly === value);
 
-  const resetState = () => {
-    setStep('choose-what');
-    setBusy(false);
-    setLocalError('');
-    setFriendly(null);
-    setInputName('');
-    setSceneItemId(null);
-    setDevices([]);
-    setPropertyName(undefined);
-    setSelectedDeviceId('');
-    setNameDraft('');
-  };
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (open && !dialog.open) {
-      resetState();
-      dialog.showModal();
-    } else if (!open && dialog.open) {
-      dialog.close();
-    }
-  }, [open]);
-
   // Limpia el input recien creado en OBS si el asistente se cierra sin terminar.
   const closeWithCleanup = async () => {
     if (inputName) {
@@ -94,17 +68,6 @@ export function AddSourceWizard({ open, sceneName, onClose, onCreated }: AddSour
     }
     onClose();
   };
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const handleCancel = (event: Event) => {
-      event.preventDefault();
-      void closeWithCleanup();
-    };
-    dialog.addEventListener('cancel', handleCancel);
-    return () => dialog.removeEventListener('cancel', handleCancel);
-  }, [inputName]);
 
   const handleChooseFriendly = async (value: SourceKindFriendly) => {
     setLocalError('');
@@ -272,11 +235,8 @@ export function AddSourceWizard({ open, sceneName, onClose, onCreated }: AddSour
   const isConsole = friendly === 'game_console';
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="glass-card w-[min(94vw,560px)] rounded-none border-border bg-background/90 p-0 text-text shadow-2xl shadow-black/60"
-    >
-      <div className="space-y-5 p-6">
+    <div className="border border-border bg-background/40 text-text">
+      <div className="space-y-5 p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight text-text">
             {step === 'choose-what' && 'Que quieres mostrar?'}
@@ -436,6 +396,6 @@ export function AddSourceWizard({ open, sceneName, onClose, onCreated }: AddSour
           </div>
         )}
       </div>
-    </dialog>
+    </div>
   );
 }

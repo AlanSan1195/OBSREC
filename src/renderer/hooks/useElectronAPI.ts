@@ -95,6 +95,10 @@ export function useElectronAPI() {
   const getPeripherals = async (): Promise<PeripheralsSnapshot | null> => {
     try {
       const peripherals = await getElectronAPI().system.getPeripherals();
+      console.log('[peripherals] Detectados:', {
+        capturadoras: peripherals.captureDevices,
+        monitores: peripherals.displays,
+      });
       setPeripherals(peripherals);
       return peripherals;
     } catch (error) {
@@ -108,6 +112,13 @@ export function useElectronAPI() {
     setError(null);
     try {
       const profile = await getElectronAPI().ai.profileConsole(request);
+      const navSources = profile.profile?.sources ?? [];
+      console.log('[console-profile] Respuesta IA:', {
+        fuentesNavegadas: navSources.length > 0 ? navSources : 'NO (sources vacio: la IA no navego specs oficiales)',
+        capturaRecomendada: `${profile.profile?.captureResolution} @${profile.profile?.captureFps}fps`,
+        bottleneck: profile.profile?.bottleneck,
+        origen: profile.source,
+      });
       setConsoleProfile(profile);
       // Reusa el flujo de aplicar de OBS: la recomendacion alimenta OBSComparison/ImportButton.
       setRecommendation({

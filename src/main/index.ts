@@ -337,6 +337,67 @@ ipcMain.handle('system:get-info', async () => {
 
 const CAPTURE_KEYWORDS = ['capture', 'hdmi', 'elgato', 'avermedia', 'ripsaw', 'ugreen', 'macrosilicon', 'cam link', 'live gamer', 'game capture', 'video grabber'];
 
+async function searchWebLocal(query: string): Promise<{ results: string[]; sources: string[] }> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) {
+    return { results: [], sources: [] };
+  }
+
+  // Dominios confiables: oficiales, manuales, retailers conocidos
+  const trustedDomains = [
+    // Oficiales y manuales
+    'support.', 'manual.', 'manuals.', 'specs.', 'specifications.',
+    'ugreen.', 'elgato.', 'avermedia.', 'razer.', 'cam-link.',
+    // Retailers grandes
+    'amazon.', 'mercadolibre.', 'aliexpress.', 'newegg.', 'bhphotovideo.',
+    'adorama.', 'b&h.', 'sweetwater.', 'bestbuy.', 'walmart.',
+    // Profesionales de specs/reviews
+    'rtings.', 'techpowerup.', 'anandtech.', 'overclock.net',
+  ];
+
+  const isUrlTrusted = (url: string): boolean => {
+    const domain = new URL(url).hostname.toLowerCase();
+    return trustedDomains.some((trusted) => domain.includes(trusted));
+  };
+
+  try {
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        max_results: 8, // Buscar más para filtrar después
+        include_answer: false,
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn(`[tavily-local] API error: ${response.status}`);
+      return { results: [], sources: [] };
+    }
+
+    const data = (await response.json()) as { results?: Array<{ content: string; url: string }> };
+    const allResults = data.results ?? [];
+
+    // Filtrar solo fuentes confiables
+    const trusted = allResults.filter((r) => isUrlTrusted(r.url));
+    const results = trusted.map((r) => r.content);
+    const sources = trusted.map((r) => r.url);
+
+    console.log(`[tavily-local] Busqueda: "${query}"`);
+    console.log(`[tavily-local] Encontrados: ${allResults.length} totales, ${sources.length} confiables`);
+    if (sources.length > 0) {
+      console.log(`[tavily-local] Fuentes filtradas:`, sources);
+    }
+
+    return { results, sources };
+  } catch (error) {
+    console.warn('[tavily-local] Web search failed:', error instanceof Error ? error.message : error);
+    return { results: [], sources: [] };
+  }
+}
+
 ipcMain.handle('system:get-peripherals', async (): Promise<PeripheralsSnapshot> => {
   const si = await import('systeminformation');
   const [graphics, usb] = await Promise.all([
@@ -357,6 +418,12 @@ ipcMain.handle('system:get-peripherals', async (): Promise<PeripheralsSnapshot> 
   const captureDevices = (usb ?? [])
     .map((device) => ({ name: (device.name || '').trim(), vendor: device.vendor || undefined }))
     .filter((device) => device.name.length > 0 && CAPTURE_KEYWORDS.some((keyword) => device.name.toLowerCase().includes(keyword)));
+
+  console.log('[peripherals] === Deteccion local (systeminformation) ===');
+  console.log(`[peripherals] USB crudos: ${(usb ?? []).length} dispositivos`);
+  console.log('[peripherals] USB nombres:', (usb ?? []).map((d) => d.name || '(sin nombre)'));
+  console.log(`[peripherals] Capturadoras (filtradas por keyword): ${captureDevices.length}`, captureDevices);
+  console.log(`[peripherals] Monitores: ${displays.length}`, displays);
 
   return { displays, captureDevices };
 });
@@ -406,14 +473,46 @@ ipcMain.handle('ai:profile-console', async (_, rawRequest: unknown) => {
   }
 
   const request: ConsoleProfileRequest = { ...validation.value, os: process.platform };
+  console.log('[console-profile] === Peticion enviada a la IA ===');
+  console.log(`[console-profile] Consola: ${request.console} | Capturadora: ${request.captureCard ?? '(ninguna)'} | Monitor: ${request.monitor ?? '(ninguno)'}`);
+  console.log(`[console-profile] Capacidad real leida de OBS: ${request.captureMaxResolution ?? 'NO'}${request.captureMaxFps ? ` @${request.captureMaxFps}fps` : ''}`);
   try {
-    return await getRemoteConsoleProfile(request);
+    const profile = await getRemoteConsoleProfile(request);
+    const sources = profile.profile?.sources ?? [];
+    console.log('[console-profile] === Respuesta de la IA ===');
+    console.log(`[console-profile] Fuentes navegadas: ${sources.length > 0 ? `SI (${sources.length})` : 'NO (sources vacio -> la IA uso conocimiento del modelo, no navego specs oficiales)'}`);
+    if (sources.length > 0) console.log('[console-profile] URLs:', sources);
+    console.log(`[console-profile] Captura recomendada: ${profile.profile?.captureResolution ?? '?'} @${profile.profile?.captureFps ?? '?'}fps`);
+    console.log('[console-profile] Cadena detectada:', {
+      consola: profile.profile?.console,
+      capturadora: profile.profile?.captureCard,
+      monitor: profile.profile?.monitor,
+      bottleneck: profile.profile?.bottleneck,
+    });
+    return profile;
   } catch (error) {
     console.error('Error profiling console with integrated AI:', error);
+    // Intento 2: Busqueda web local via Tavily
+    let webSources: string[] = [];
+    if (process.env.TAVILY_API_KEY) {
+      console.log('[console-profile] Intentando busqueda web local via Tavily...');
+      const { sources: tavilySources } = await searchWebLocal(
+        `${request.captureCard} capture card specifications resolution fps`,
+      );
+      webSources = tavilySources;
+      if (webSources.length > 0) {
+        console.log(`[console-profile] Tavily encontro ${webSources.length} fuentes`);
+      }
+    }
+
     const localProfile = getLocalConsoleProfile(request);
     return {
       ...localProfile,
-      reasoning: `${localProfile.reasoning} IA integrada no disponible: ${getRemoteAIUserMessage(error)}`,
+      profile: {
+        ...localProfile.profile,
+        sources: webSources.length > 0 ? webSources : localProfile.profile.sources,
+      },
+      reasoning: `${localProfile.reasoning}${webSources.length > 0 ? ' [Fuentes navegadas via Tavily]' : ' IA integrada no disponible: ' + getRemoteAIUserMessage(error)}`,
     };
   }
 });
