@@ -90,22 +90,7 @@ Responde en JSON con este formato exacto, sin texto adicional:
   return parseJsonObject(response);
 }
 
-export async function getMicProfileFromGroq(request: MicProfileRequest): Promise<unknown> {
-  const { deviceName, inputKind, mode, os } = request;
-  const prompt = `Eres un ingeniero de audio experto en OBS. Busca en la web las especificaciones OFICIALES del microfono cuyo nombre detectado por el sistema es: "${deviceName}".
-Contexto: sistema operativo ${os ?? 'desconocido'}, tipo de entrada OBS "${inputKind ?? 'desconocido'}", uso "${mode}".
-
-A partir de las caracteristicas reales del producto (tipo condensador/dinamico/electret, conexion USB/XLR/analogica, sensibilidad, nivel de ruido propio, si tiene DSP/cancelacion de ruido integrada) decide que filtros de OBS conviene aplicar, ajustar u OMITIR para una voz clara y profesional.
-
-Reglas:
-- Si el nombre es generico (ej. "Default", "Microphone", "Built-in") y no puedes identificar un modelo real, marca "identified": false y da valores conservadores.
-- Si el microfono YA tiene DSP/cancelacion de ruido integrada, omite o suaviza la supresion de ruido de OBS.
-- Un condensador sensible suele necesitar noise gate y menos ganancia; un dinamico de baja salida (ej. SM7B) necesita mas ganancia.
-- "method": usa "rnnoise" salvo que recomiendes especificamente "speex" o "nvafx".
-- En cada filtro incluye "enabled" (false = omitir) y un "reason" breve en espanol.
-- Incluye "sources" con 1-3 URLs oficiales del fabricante que respalden las specs.
-
-Responde SOLO con JSON valido y exactamente con esta forma:
+const MIC_PROFILE_JSON_SHAPE = `Responde SOLO con JSON valido y exactamente con esta forma:
 {
   "profile": {
     "identified": true,
@@ -126,13 +111,68 @@ Responde SOLO con JSON valido y exactamente con esta forma:
   "reasoning": "explicacion general en espanol"
 }`;
 
+const MIC_PROFILE_RULES = `Reglas:
+- Si el nombre es generico (ej. "Default", "Microphone", "Built-in") y no puedes identificar un modelo real, marca "identified": false y da valores conservadores.
+- Si el microfono YA tiene DSP/cancelacion de ruido integrada, omite o suaviza la supresion de ruido de OBS.
+- Un condensador sensible suele necesitar noise gate y menos ganancia; un dinamico de baja salida (ej. SM7B) necesita mas ganancia.
+- "method": usa "rnnoise" salvo que recomiendes especificamente "speex" o "nvafx".
+- En cada filtro incluye "enabled" (false = omitir) y un "reason" breve en espanol.`;
+
+function buildMicContext(request: MicProfileRequest): string {
+  return `Microfono detectado: "${request.deviceName}". Contexto: sistema operativo ${request.os ?? 'desconocido'}, tipo de entrada OBS "${request.inputKind ?? 'desconocido'}", uso "${request.mode}".`;
+}
+
+// Hibrido: si GROQ_SEARCH_MODEL esta configurado (ej. 'groq/compound' en un tier
+// que lo permita), intenta busqueda web real; si falla (en el tier gratuito de
+// Groq excede el limite por peticion: "request_too_large") cae al conocimiento
+// del modelo (gpt-oss). Por defecto, sin esa env var, va directo a gpt-oss para
+// no pagar ~7s de espera inutil en cada analisis.
+export async function getMicProfileFromGroq(request: MicProfileRequest): Promise<unknown> {
+  const searchModel = process.env.GROQ_SEARCH_MODEL;
+
+  if (searchModel) {
+    try {
+      const webPrompt = `Eres un ingeniero de audio experto en OBS. Busca en la web las especificaciones OFICIALES del microfono indicado.
+${buildMicContext(request)}
+
+A partir de las caracteristicas reales del producto (tipo, conexion, sensibilidad, nivel de ruido propio, DSP integrado) decide que filtros de OBS conviene aplicar, ajustar u OMITIR para una voz clara y profesional.
+
+${MIC_PROFILE_RULES}
+- Incluye "sources" con 1-3 URLs oficiales del fabricante que respalden las specs.
+
+${MIC_PROFILE_JSON_SHAPE}`;
+
+      // Sin max_tokens: groq/compound lo rechaza ("request_too_large").
+      const response = await chat(
+        [
+          { role: 'system', content: 'Eres un ingeniero de audio experto en OBS. Usas busqueda web para confirmar specs y respondes solo en JSON valido.' },
+          { role: 'user', content: webPrompt },
+        ],
+        { model: searchModel, temperature: 0.3, maxTokens: null },
+      );
+      return parseJsonObject(response);
+    } catch (error) {
+      console.warn('Busqueda web no disponible para el perfil de microfono, usando conocimiento del modelo:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  // Conocimiento del modelo (rapido, sin web). Funciona en el tier gratuito.
+  const knowledgePrompt = `Eres un ingeniero de audio experto en OBS. A partir de tu conocimiento del microfono indicado, recomienda filtros de OBS.
+${buildMicContext(request)}
+
+Identifica tipo (condensador/dinamico/electret), conexion (USB/XLR/analogica) y si tiene DSP/cancelacion de ruido integrada, y decide que filtros aplicar, ajustar u OMITIR para una voz clara y profesional.
+
+${MIC_PROFILE_RULES}
+- No inventes URLs: deja "sources" como [].
+
+${MIC_PROFILE_JSON_SHAPE}`;
+
   const response = await chat(
     [
-      { role: 'system', content: 'Eres un ingeniero de audio experto en OBS. Usas busqueda web para confirmar specs y respondes solo en JSON valido.' },
-      { role: 'user', content: prompt },
+      { role: 'system', content: 'Eres un ingeniero de audio experto en OBS. Respondes solo en JSON valido.' },
+      { role: 'user', content: knowledgePrompt },
     ],
-    // Sin max_tokens: groq/compound lo rechaza ("request_too_large").
-    { model: process.env.GROQ_SEARCH_MODEL || 'groq/compound', temperature: 0.3, maxTokens: null },
+    { model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b', temperature: 0.3, maxTokens: 2000 },
   );
 
   return parseJsonObject(response);
