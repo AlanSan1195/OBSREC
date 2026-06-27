@@ -13,16 +13,16 @@ module.exports = {
       colors: {
         background: '#050505',
         surface: 'rgba(255,255,255,0.015)',
-        'surface-hover': 'rgba(124,255,158,0.05)',
-        border: 'rgba(124,255,158,0.14)',
-        // phosphor green accent — luna's oklch(0.86 0.19 145)
-        primary: '#5eff9f',
-        'primary-dim': '#3ad27f',
-        'primary-hover': '#7dffb4',
-        glow: '#5eff9f',
-        text: '#d7f7e2',
-        'text-muted': '#5f8b6f',
-        'text-faint': '#3a5544',
+        'surface-hover': 'rgba(58,155,220,0.05)',
+        border: 'rgba(58,155,220,0.14)',
+        // OBS-style blue accent
+        primary: '#3a9bdc',
+        'primary-dim': '#2f80bd',
+        'primary-hover': '#5bb7f0',
+        glow: '#3a9bdc',
+        text: '#d7edf8',
+        'text-muted': '#6f9fbd',
+        'text-faint': '#486879',
       },
       letterSpacing: {
         terminal: '0.08em',

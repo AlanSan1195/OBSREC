@@ -96,7 +96,11 @@ const MIC_CONNECTION_LABELS: Record<string, string> = {
   unknown: 'Conexion desconocida',
 };
 
-export function AudioConfiguration() {
+interface AudioConfigurationProps {
+  onApplySuccess?: () => void;
+}
+
+export function AudioConfiguration({ onApplySuccess }: AudioConfigurationProps = {}) {
   const {
     obsConnected,
     obsAudioSnapshot,
@@ -116,6 +120,8 @@ export function AudioConfiguration() {
   const [detectionMessage, setDetectionMessage] = useState('');
   const [autoDetectTried, setAutoDetectTried] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [previewConfirmOpen, setPreviewConfirmOpen] = useState(false);
   const [noiseSuppression, setNoiseSuppression] = useState(true);
   const [monitorType, setMonitorType] = useState<OBSAudioConfig['monitorType']>('OBS_MONITORING_TYPE_NONE');
   const [syncOffsetMs, setSyncOffsetMs] = useState(0);
@@ -183,34 +189,34 @@ export function AudioConfiguration() {
     }
   };
 
-  const handleLocalDeviceScan = async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) {
-      setLocalDeviceStatus('La deteccion local de microfono no esta disponible en este entorno');
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices.filter((device) => device.kind === 'audioinput');
-      setLocalDeviceStatus(`${audioInputs.length} microfono${audioInputs.length === 1 ? '' : 's'} local${audioInputs.length === 1 ? '' : 'es'} visible${audioInputs.length === 1 ? '' : 's'} para obsee`);
-    } catch {
-      setLocalDeviceStatus('Se nego el permiso del microfono local; los datos de OBS siguen disponibles');
-    }
-  };
 
   const usingAi = useAiRecommendation && micProfile !== null;
 
-  const handleApply = async () => {
-    if (!obsAudioSnapshot) return;
-
-    const filters = usingAi && micProfile
+  const buildAudioConfig = (useAi: boolean): OBSAudioConfig => {
+    const filters: OBSAudioFilterConfig = useAi && micProfile
       ? filtersFromProfile(micProfile)
-      : { ...defaultFilters, noiseSuppression };
+      : {
+          gainDb: 0,
+          gainEnabled: false,
+          compressorRatio: 1,
+          compressorThresholdDb: 0,
+          compressorEnabled: false,
+          limiterThresholdDb: 0,
+          limiterEnabled: false,
+          noiseSuppression,
+          noiseSuppressionMethod: 'rnnoise',
+          noiseGate: {
+            enabled: false,
+            closeThresholdDb: -40,
+            openThresholdDb: -35,
+          },
+        };
 
-    const config: OBSAudioConfig = {
-      ...createDefaultAudioConfig(obsAudioSnapshot.inputName, selectedDevice),
+    return {
+      inputName: obsAudioSnapshot!.inputName,
+      deviceId: selectedDevice?.id,
+      deviceName: selectedDevice?.name,
+      mono: true,
       filters,
       monitorType,
       syncOffsetMs,
@@ -221,14 +227,52 @@ export function AudioConfiguration() {
         }
         : undefined,
     };
+  };
 
+  const handleApplyWithPreview = async () => {
+    if (!obsAudioSnapshot || !usingAi || !micProfile) {
+      await handleApplyFinal(false);
+      return;
+    }
+
+    setConfirmOpen(false);
     setError(null);
+    const config = buildAudioConfig(true);
     const result = await applyAudioConfig(config);
     if (result.success) {
       setObsMessage(result.message);
+      setPreviewMode(true);
+      setPreviewConfirmOpen(true);
     } else {
       setError(result.message);
     }
+  };
+
+  const handleApplyFinal = async (withAi: boolean) => {
+    if (!obsAudioSnapshot) return;
+
+    setError(null);
+    const config = buildAudioConfig(withAi);
+    const result = await applyAudioConfig(config);
+    if (result.success) {
+      setObsMessage(result.message);
+      setPreviewMode(false);
+      setPreviewConfirmOpen(false);
+      onApplySuccess?.();
+    } else {
+      setError(result.message);
+    }
+  };
+
+  const handleConfirmPreview = () => {
+    setPreviewConfirmOpen(false);
+    setPreviewMode(false);
+    onApplySuccess?.();
+  };
+
+  const handleRejectPreview = async () => {
+    setPreviewConfirmOpen(false);
+    await handleApplyFinal(false);
   };
 
   if (!obsAudioSnapshot) {
@@ -275,25 +319,15 @@ export function AudioConfiguration() {
       icon={<IconMic className="h-4 w-4" />}
       subtitle="Objetivo: que tu voz se escuche clara, fuerte y sin ruido de fondo al grabar o transmitir."
       action={
-        <>
-          <button
-            type="button"
-            onClick={handleAnalyzeMic}
-            disabled={isProfilingMic}
-            className={`${secondaryButtonClasses} ${isProfilingMic ? 'cursor-not-allowed opacity-60' : 'hover:border-primary/60'}`}
-          >
-            {isProfilingMic ? <Spinner className="h-3.5 w-3.5 border-text/60 border-t-transparent" /> : <IconSparkles className="h-3.5 w-3.5" />}
-            {isProfilingMic ? 'Analizando...' : 'Analizar microfono con IA'}
-          </button>
-          <button type="button" onClick={handleLocalDeviceScan} className={secondaryButtonClasses}>
-            <IconMic className="h-3.5 w-3.5" />
-            Buscar micro local
-          </button>
-          <button type="button" onClick={handleRefresh} className={secondaryButtonClasses}>
-            <IconRefresh className="h-3.5 w-3.5" />
-            Actualizar OBS
-          </button>
-        </>
+        <button
+          type="button"
+          onClick={handleAnalyzeMic}
+          disabled={isProfilingMic}
+          className={`${secondaryButtonClasses} ${isProfilingMic ? 'cursor-not-allowed opacity-60' : 'hover:border-primary/60'}`}
+        >
+          {isProfilingMic ? <Spinner className="h-3.5 w-3.5 border-text/60 border-t-transparent" /> : <IconSparkles className="h-3.5 w-3.5" />}
+          {isProfilingMic ? 'Analizando...' : 'Buscar filtros'}
+        </button>
       }
     >
       {micProfile && (
@@ -329,36 +363,13 @@ export function AudioConfiguration() {
 
         <div className="rounded-none border border-border bg-white/[0.02] p-4">
           <span className="mb-2 block text-xs uppercase tracking-wider text-text-muted">Filtros</span>
-          <span className={usingAi ? 'text-base font-semibold text-primary' : filtersReady ? 'text-base font-semibold text-primary' : 'text-base font-semibold text-amber-400'}>
-            {usingAi ? 'A medida (IA)' : filtersReady ? 'Listos' : 'Se aplicaran'}
+          <span className={usingAi ? 'text-base font-semibold text-primary' : 'text-base font-semibold text-text-muted'}>
+            {usingAi ? 'A medida (IA)' : 'Ninguno seleccionado'}
           </span>
         </div>
       </div>
 
-      <div className={`mb-4 grid gap-3 text-sm md:grid-cols-3 ${usingAi ? 'hidden' : ''}`}>
-        <div className="rounded-none border border-border bg-white/[0.02] px-4 py-3">
-          <span className="block font-semibold text-text">Ganancia +10 dB</span>
-          <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-            Sube el volumen de tu microfono para que tu voz se escuche fuerte y clara sin tener que acercarte ni gritar.
-          </span>
-        </div>
-        <div className="rounded-none border border-border bg-white/[0.02] px-4 py-3">
-          <span className="block font-semibold text-text">Compresor 4:1 a -10 dB</span>
-          <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-            Empareja tu voz: suaviza los picos cuando hablas fuerte y realza las partes bajas, para un volumen constante y profesional.
-          </span>
-        </div>
-        <div className="rounded-none border border-border bg-white/[0.02] px-4 py-3">
-          <span className="block font-semibold text-text">Limitador a -1 dB</span>
-          <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-            Pone un tope de seguridad: evita que un grito o un golpe de sonido sature y se escuche distorsionado en la grabacion.
-          </span>
-        </div>
-      </div>
-
-      <div className="mb-4 rounded-none border border-border bg-white/[0.02] p-4">
-        <h4 className="mb-4 text-xs font-semibold uppercase tracking-wider text-text-muted">Etapa 2</h4>
-        <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
           <label className="flex items-start gap-3 rounded-none border border-border p-3 transition-colors hover:border-border">
             <input
               type="checkbox"
@@ -460,7 +471,6 @@ export function AudioConfiguration() {
               </label>
             )}
           </div>
-        </div>
       </div>
 
       {(obsAudioSnapshot.warnings.length > 0 || localDeviceStatus) && (
@@ -484,7 +494,7 @@ export function AudioConfiguration() {
         className={`group flex w-full items-center justify-center gap-3 rounded-none px-6 py-4 text-base font-bold lowercase tracking-terminal transition-all duration-200 ${
           isApplying
             ? 'cursor-not-allowed border border-border bg-white/[0.03] text-text-muted'
-            : 'bg-primary text-background shadow-[0_0_26px_-8px_rgba(94,255,159,0.6)] hover:bg-primary-hover hover:shadow-[0_0_32px_-6px_rgba(94,255,159,0.75)] active:scale-[0.99]'
+            : 'bg-primary text-background shadow-[0_0_26px_-8px_rgba(58,155,220,0.6)] hover:bg-primary-hover hover:shadow-[0_0_32px_-6px_rgba(58,155,220,0.75)] active:scale-[0.99]'
         }`}
       >
         {isApplying ? (
@@ -505,8 +515,7 @@ export function AudioConfiguration() {
         confirmLabel="Aplicar audio"
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => {
-          setConfirmOpen(false);
-          void handleApply();
+          void handleApplyWithPreview();
         }}
       >
         <p>Aplicar configuracion de voz obsee a "{selectedDevice?.name ?? obsAudioSnapshot.selectedDeviceName ?? obsAudioSnapshot.inputName}"?</p>
@@ -515,7 +524,7 @@ export function AudioConfiguration() {
             ? 'Se activara Mono para esta entrada.'
             : 'OBS WebSocket no expone Mono para esta entrada, asi que obsee lo dejara como paso manual en OBS.'}
         </p>
-        {usingAi && micProfile ? (
+        {usingAi && micProfile && (
           <>
             <p>obsee aplicara la cadena de voz recomendada por la IA para "{micProfile.profile.model}":</p>
             <ul className="list-disc space-y-1 pl-5">
@@ -524,13 +533,27 @@ export function AudioConfiguration() {
               ))}
             </ul>
           </>
-        ) : (
-          <p>obsee aplicara ganancia de +10 dB, compresor 4:1 a -10 dB y limitador a -1 dB.</p>
         )}
         <ul className="list-disc space-y-1 pl-5">
           {stageTwoActions.map((action) => (
             <li key={action}>{action}</li>
           ))}
+        </ul>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={previewConfirmOpen}
+        title="Prueba de filtros"
+        confirmLabel="Mantener filtros"
+        onCancel={handleRejectPreview}
+        onConfirm={handleConfirmPreview}
+      >
+        <p>Los filtros de IA se han aplicado a tu micrófono.</p>
+        <p className="mt-3 font-semibold">Escucha cómo suena tu voz durante 10-15 segundos.</p>
+        <p className="mt-3">¿Te parece que mejora la calidad de tu voz?</p>
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-text-muted">
+          <li>Si suena bien: mantén los filtros</li>
+          <li>Si suena peor o artificial: revierte a sin filtros</li>
         </ul>
       </ConfirmDialog>
     </Section>

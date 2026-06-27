@@ -165,7 +165,7 @@ export default function App() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 className="ml-2 h-[0.72em] w-[0.72em] text-primary"
-                style={{ filter: 'drop-shadow(0 0 8px rgba(94, 255, 159, 0.7))' }}
+                style={{ filter: 'drop-shadow(0 0 8px rgba(58, 155, 220, 0.7))' }}
               >
                 <path stroke="none" d="M0 0h24v24H0z" fill="none" />
                 <path d="M5 6a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1l0 -12" />
