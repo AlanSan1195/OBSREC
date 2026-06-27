@@ -7,7 +7,7 @@
       name="description"
       content="obsee analiza tu PC, recomienda ajustes para OBS y explica que cambiar antes de aplicarlo."
     />
-    <meta name="theme-color" content="#050505" />
+    <meta name="theme-color" content="#04060c" />
     <title>obsee· aplica configuracion a OBS con IA</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -20,15 +20,15 @@
     <style>
       :root {
         color-scheme: dark;
-        --bg: #050505; 
-        --phosphor: #5eff9f;
-        --phosphor-dim: #3ad27f;
-        --border: rgba(94, 255, 159, 0.16);
-        --border-strong: rgba(94, 255, 159, 0.45);
-        --surface: rgba(8, 12, 9, 0.55);
-        --text: #d7f7e2;
-        --muted: #5f8b6f;
-        --faint: #3a5544;
+        --bg: #04060c; 
+        --phosphor: #3b6fe0;
+        --phosphor-dim: #2a4fb8;
+        --border: rgba(59, 111, 224, 0.16);
+        --border-strong: rgba(59, 111, 224, 0.45);
+        --surface: rgba(8, 12, 20, 0.55);
+        --text: #dbe4f7;
+        --muted: #8b9ec9;
+        --faint: #3a4663;
         --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         --display: "Doto", "JetBrains Mono", ui-monospace, monospace;
       }
@@ -62,12 +62,12 @@
       }
 
       ::selection {
-        background: rgba(94, 255, 159, 0.28);
-        color: #eafff1;
+        background: rgba(59, 111, 224, 0.28);
+        color: #eaf0ff;
       }
 
       :focus-visible {
-        outline: 1px solid rgba(94, 255, 159, 0.8);
+        outline: 1px solid rgba(59, 111, 224, 0.8);
         outline-offset: 2px;
       }
 
@@ -79,10 +79,10 @@
         overflow: hidden;
         pointer-events: none;
         background:
-          radial-gradient(1100px 620px at 50% -240px, rgba(94, 255, 159, 0.06), transparent 70%),
-          linear-gradient(rgba(94, 255, 159, 0.035) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(94, 255, 159, 0.035) 1px, transparent 1px),
-          #050505;
+          radial-gradient(1100px 620px at 50% -240px, rgba(59, 111, 224, 0.06), transparent 70%),
+          linear-gradient(rgba(59, 111, 224, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(59, 111, 224, 0.035) 1px, transparent 1px),
+          #04060c;
         background-size: 100% 100%, 44px 44px, 44px 44px, 100% 100%;
       }
 
@@ -99,20 +99,6 @@
         opacity: 0.5;
       }
 
-      .scanbeam {
-        position: absolute;
-        left: 0;
-        right: 0;
-        height: 220px;
-        background: linear-gradient(to bottom, transparent, rgba(94, 255, 159, 0.05), transparent);
-        animation: scan 7s linear infinite;
-      }
-
-      @keyframes scan {
-        0% { transform: translateY(-260px); }
-        100% { transform: translateY(110vh); }
-      }
-
       .shell {
         width: min(1080px, calc(100% - 40px));
         margin: 0 auto;
@@ -124,7 +110,7 @@
         inset: 0 0 auto;
         z-index: 30;
         border-bottom: 1px solid var(--border);
-        background: rgba(5, 5, 5, 0.82);
+        background: rgba(4, 6, 12, 0.82);
         backdrop-filter: blur(12px);
       }
 
@@ -147,7 +133,7 @@
 
       .brand b {
         color: var(--phosphor);
-        text-shadow: 0 0 12px rgba(94, 255, 159, 0.45);
+        text-shadow: 0 0 12px rgba(59, 111, 224, 0.45);
       }
 
       .brand .cpu-cursor {
@@ -192,7 +178,7 @@
         margin-left: 4px;
         color: var(--phosphor);
         vertical-align: text-bottom;
-        filter: drop-shadow(0 0 6px rgba(94, 255, 159, 0.7));
+        filter: drop-shadow(0 0 6px rgba(59, 111, 224, 0.7));
       }
 
       @keyframes blink {
@@ -205,7 +191,7 @@
         height: 7px;
         border-radius: 999px;
         background: var(--phosphor);
-        box-shadow: 0 0 8px rgba(94, 255, 159, 0.8);
+        box-shadow: 0 0 8px rgba(59, 111, 224, 0.8);
         animation: pulse 1.8s ease-in-out infinite;
       }
 
@@ -251,7 +237,7 @@
         gap: 10px;
         padding: 10px 16px;
         border-bottom: 1px solid var(--border);
-        background: rgba(94, 255, 159, 0.03);
+        background: rgba(59, 111, 224, 0.03);
         font-size: 0.78rem;
       }
 
@@ -259,7 +245,7 @@
         width: 9px;
         height: 9px;
         background: var(--phosphor);
-        box-shadow: 0 0 8px rgba(94, 255, 159, 0.7);
+        box-shadow: 0 0 8px rgba(59, 111, 224, 0.7);
       }
 
       .panel-head h3 {
@@ -268,7 +254,7 @@
         text-transform: lowercase;
         letter-spacing: 0.08em;
         color: var(--phosphor);
-        text-shadow: 0 0 10px rgba(94, 255, 159, 0.35);
+        text-shadow: 0 0 10px rgba(59, 111, 224, 0.35);
       }
 
       .panel-head .meta {
@@ -319,7 +305,7 @@
         line-height: 0.9;
         letter-spacing: 0.02em;
         color: var(--text);
-        text-shadow: 0 0 24px rgba(94, 255, 159, 0.25);
+        text-shadow: 0 0 24px rgba(59, 111, 224, 0.25);
       }
 
       h1 .accent {
@@ -373,20 +359,20 @@
       }
 
       .button.primary {
-        background: rgba(94, 255, 159, 0.1);
+        background: rgba(59, 111, 224, 0.1);
         border-color: var(--phosphor);
         color: var(--phosphor);
-        box-shadow: 0 0 24px rgba(94, 255, 159, 0.12);
+        box-shadow: 0 0 24px rgba(59, 111, 224, 0.12);
       }
 
       .button.primary:hover {
-        background: rgba(94, 255, 159, 0.18);
+        background: rgba(59, 111, 224, 0.18);
         color: var(--phosphor-hover);
-        box-shadow: 0 0 32px rgba(94, 255, 159, 0.22);
+        box-shadow: 0 0 32px rgba(59, 111, 224, 0.22);
       }
 
       .button.ghost:hover {
-        background: rgba(94, 255, 159, 0.06);
+        background: rgba(59, 111, 224, 0.06);
         color: var(--phosphor);
       }
 
@@ -447,12 +433,56 @@
         margin: 10px 0;
         padding: 10px 12px;
         border: 1px solid var(--border-strong);
-        background: rgba(94, 255, 159, 0.05);
+        background: rgba(59, 111, 224, 0.05);
         color: var(--phosphor);
         font-family: var(--mono);
         font-size: 0.8rem;
         user-select: all;
         overflow-x: auto;
+      }
+
+      /* ---- aviso beta en el hero ---- */
+      .beta-note {
+        margin-top: 18px;
+        max-width: 520px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 0.8rem;
+        line-height: 1.6;
+      }
+      .beta-note .lead {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .beta-tag {
+        flex: none;
+        padding: 2px 6px;
+        border: 1px solid var(--border-strong);
+        color: var(--phosphor);
+        font-size: 0.6rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .beta-note code {
+        align-self: flex-start;
+        padding: 8px 11px;
+        border: 1px solid var(--border-strong);
+        background: rgba(59, 111, 224, 0.07);
+        color: var(--phosphor);
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        user-select: all;
+      }
+      .beta-note .sub {
+        color: var(--faint);
+        font-size: 0.74rem;
       }
 
       /* ---- hero mock terminal ---- */
@@ -489,14 +519,14 @@
         position: relative;
         height: 8px;
         margin-top: 4px;
-        background: rgba(94, 255, 159, 0.08);
+        background: rgba(59, 111, 224, 0.08);
         overflow: hidden;
       }
       .term-mock .bar > i {
         position: absolute;
         inset: 0 auto 0 0;
         background: var(--phosphor);
-        box-shadow: 0 0 10px rgba(94, 255, 159, 0.6);
+        box-shadow: 0 0 10px rgba(59, 111, 224, 0.6);
       }
 
       /* ---- sections ---- */
@@ -643,7 +673,7 @@
       }
       .status.is-ok .led {
         background: var(--phosphor);
-        box-shadow: 0 0 8px rgba(94, 255, 159, 0.8);
+        box-shadow: 0 0 8px rgba(59, 111, 224, 0.8);
       }
       .status.is-local .led {
         background: #ffd166;
@@ -699,7 +729,6 @@
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .scanbeam { display: none; }
         .dot { animation: none; }
         html { scroll-behavior: auto; }
       }
@@ -707,7 +736,7 @@
   </head>
 
   <body>
-    <div class="backdrop" aria-hidden="true"><div class="scanbeam"></div></div>
+    <div class="backdrop" aria-hidden="true"></div>
 
     <header class="topbar">
       <nav class="nav shell" aria-label="Principal">
@@ -753,6 +782,15 @@
               </a>
             </div>
             <p class="note"> configuración inicial para tu obs, sin ser un experto.</p>
+
+            <div class="beta-note">
+              <span class="lead">
+                <span class="beta-tag">beta</span>
+                <span>app sin firmar todavía. la primera vez en macOS ábrela con:</span>
+              </span>
+              <code>xattr -cr /Applications/obsee.app</code>
+              <span class="sub">o clic derecho › abrir. solo hace falta una vez. (windows: "más información" › "ejecutar de todos modos")</span>
+            </div>
           </div>
 
           <div class="panel term-panel" aria-hidden="true">
